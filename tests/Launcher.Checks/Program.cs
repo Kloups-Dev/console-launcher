@@ -1,9 +1,24 @@
 using System.Reflection;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using Launcher.Core;
+
+if (args.Length > 1 && args[0] == "--install-dolphin")
+{
+    using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    var installer = new DolphinInstaller(client, Path.GetFullPath(args[1]));
+    var installed = await installer.InstallAsync(new InlineProgress(p => Console.WriteLine(p.Message + " " + p.Percent)));
+    if (installer.Detect() is null) throw new Exception("Installed Dolphin failed detection");
+    var backend = new LauncherBackend(new LibraryStore(Path.Combine(args[1], "library.json")));
+    backend.Configure("gamecube", new("dolphin", installed.Executable, UserDirectory: installed.UserDirectory));
+    Console.WriteLine(installed.Executable);
+    return;
+}
 
 if (args.Length > 0 && args[0] == "--child")
 {
@@ -197,7 +212,66 @@ try
     Check(stopSent, "Graceful window close request sent");
     Check(await windowSession.WaitAsync(TimeSpan.FromSeconds(5)) == 0, "Window session exits successfully");
     Check(File.ReadAllText(marker) == "closed normally" && !runner.IsRunning, "Close handler runs before launcher releases session");
-    Console.WriteLine($"PASS: {checks} checks (navigation, storage, hold gesture, sessions and graceful window close).");
+    var installRoot = Path.Combine(root, "installation");
+    var extracted = Path.Combine(installRoot, "extracted");
+    Directory.CreateDirectory(extracted);
+    DolphinInstaller.ExtractArchive(Path.Combine(AppContext.BaseDirectory, "Fixtures", "minimal.7z"), extracted, default);
+    Check(File.ReadAllText(Path.Combine(extracted, "Dolphin-x64", "Dolphin.exe")).StartsWith("MZ-test"), "Actual 7z extraction preserves file content");
+    Check(File.Exists(Path.Combine(extracted, "Dolphin-x64", "QtPlugins", "platforms", "qwindows.dll")), "Nested plugin is extracted");
+    foreach (var entry in new[] { "../escape", "sub/../../escape", "C:/escape", "/escape", "file:stream", "..\\escape" })
+        Expect<InvalidDataException>(() => DolphinInstaller.SafeDestination(extracted, entry));
+    Check(DolphinInstaller.SafeDestination(extracted, "safe/file.txt").StartsWith(extracted), "Safe archive entry remains inside destination");
+    var userDirectory = Path.Combine(installRoot, "user");
+    DolphinInstaller.InitializeUserDirectory(userDirectory);
+    var padPath = Path.Combine(userDirectory, "Config", "GCPadNew.ini");
+    Check(File.ReadAllText(padPath).Contains("XInput/0/Gamepad"), "First install creates XInput starting profile");
+    File.WriteAllText(padPath, "personal settings");
+    DolphinInstaller.InitializeUserDirectory(userDirectory);
+    Check(File.ReadAllText(padPath) == "personal settings", "Installation preserves existing controls");
+    var managedPlan = new DolphinAdapter().Prepare(imported, executable, userDirectory);
+    Check(managedPlan.Arguments[^2] == "--user" && managedPlan.Arguments[^1] == userDirectory, "Managed session uses separate user directory");
+    using var downloadClient = new HttpClient(new FakeDownload());
+    var bytes = "archive fixture"u8.ToArray();
+    var package = new DolphinPackage("fixture", new("https://dl.dolphin-emu.org/fixture.7z"), Convert.ToHexString(SHA256.HashData(bytes)));
+    var downloaded = Path.Combine(installRoot, "verified.7z");
+    await DolphinInstaller.DownloadVerifiedAsync(downloadClient, package, downloaded, null, default);
+    Check(File.ReadAllBytes(downloaded).SequenceEqual(bytes), "Verified download preserves bytes");
+    var rejected = false;
+    try { await DolphinInstaller.DownloadVerifiedAsync(downloadClient, package with { Sha256 = new('0', 64) }, Path.Combine(installRoot, "bad.7z"), null, default); }
+    catch (InvalidDataException) { rejected = true; }
+    Check(rejected, "Mismatched hash blocks installation");
+    rejected = false;
+    try { await DolphinInstaller.DownloadVerifiedAsync(downloadClient, package with { Url = new("https://example.org/fixture.7z") }, Path.Combine(installRoot, "host.7z"), null, default); }
+    catch (InvalidDataException) { rejected = true; }
+    Check(rejected, "Unapproved source is rejected");
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    rejected = false;
+    try { await new DolphinInstaller(downloadClient, installRoot).InstallAsync(cancellation: cancelled.Token); }
+    catch (OperationCanceledException) { rejected = true; }
+    Check(rejected, "Cancelled install is not started");
+    var failedInstaller = new DolphinInstaller(downloadClient, installRoot);
+    rejected = false;
+    try { await failedInstaller.InstallAsync(); } catch (InvalidDataException) { rejected = true; }
+    Check(rejected && failedInstaller.Detect() is null, "Failed download never registers an installation");
+    Check(!Directory.GetDirectories(Path.Combine(installRoot, "emulators", "dolphin"), ".install-*").Any(), "Failed installation removes only its staging directory");
+    var cachedRoot = Path.Combine(root, "cached");
+    var cachedInstaller = new DolphinInstaller(downloadClient, cachedRoot);
+    var cachedVersion = Path.Combine(cachedRoot, "emulators", "dolphin", DolphinPackage.Current.Version);
+    Directory.CreateDirectory(cachedVersion);
+    DolphinInstaller.ExtractArchive(Path.Combine(AppContext.BaseDirectory, "Fixtures", "minimal.7z"), cachedVersion, default);
+    var cachedExe = Path.Combine(cachedVersion, "Dolphin-x64", "Dolphin.exe");
+    var receipt = new DolphinInstallation(DolphinPackage.Current.Version, cachedExe, cachedInstaller.UserDirectory,
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(cachedExe))));
+    File.WriteAllText(Path.Combine(cachedVersion, "installation.json"), JsonSerializer.Serialize(receipt));
+    Check(cachedInstaller.Detect() is not null, "Valid managed installation is detected");
+    Check((await cachedInstaller.InstallAsync()).Executable == cachedExe, "Existing installation is reused without download");
+    File.WriteAllText(cachedExe, "damaged");
+    Check(cachedInstaller.Detect() is null, "Changed executable fails detection");
+    try { await cachedInstaller.InstallAsync(); } catch (InvalidDataException) { }
+    Check(File.ReadAllText(cachedExe) == "damaged", "Failed repair preserves previous installation");
+    File.WriteAllText(Path.Combine(cachedVersion, "installation.json"), JsonSerializer.Serialize(receipt with { Executable = executable }));
+    Check(cachedInstaller.Detect() is null, "Receipt cannot redirect to an unrelated executable");
+    Console.WriteLine($"PASS: {checks} checks (library, launch sessions, graceful close and Dolphin installation).");
 }
 finally
 {
@@ -222,4 +296,14 @@ internal sealed class ControlledSession : ISessionRunner
     }
     public bool RequestStop() => IsRunning;
     public void Complete(int exitCode) => completion!.SetResult(exitCode);
+}
+
+internal sealed class FakeDownload : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("archive fixture"u8.ToArray()), RequestMessage = request });
+}
+internal sealed class InlineProgress(Action<InstallProgress> report) : IProgress<InstallProgress>
+{
+    public void Report(InstallProgress value) => report(value);
 }

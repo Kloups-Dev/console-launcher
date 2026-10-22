@@ -15,6 +15,9 @@ public sealed class DolphinAdapter : IEmulatorAdapter
     public string Id => "dolphin";
 
     public LaunchRequest Prepare(GameEntry game, string executable)
+        => Prepare(game, executable, null);
+
+    public LaunchRequest Prepare(GameEntry game, string executable, string? userDirectory)
     {
         if (game.SystemId is not ("gamecube" or "wii")) throw new InvalidOperationException("Ce module prend en charge GameCube et Wii pour le moment.");
         if (string.IsNullOrWhiteSpace(game.FilePath) || !File.Exists(game.FilePath))
@@ -22,9 +25,11 @@ public sealed class DolphinAdapter : IEmulatorAdapter
         if (!File.Exists(executable) || !string.Equals(Path.GetFileName(executable), "Dolphin.exe", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Sélectionne Dolphin.exe dans les réglages.");
         // CLI overrides are session-only. Existing Dolphin profiles and saves remain in use.
-        return new(Path.GetFullPath(executable), ["--batch", "--exec", Path.GetFullPath(game.FilePath),
+        List<string> arguments = ["--batch", "--exec", Path.GetFullPath(game.FilePath),
             "--config", "Dolphin.Display.Fullscreen=True",
-            "--config", "Dolphin.Interface.ConfirmStop=False"], Path.GetDirectoryName(Path.GetFullPath(executable))!);
+            "--config", "Dolphin.Interface.ConfirmStop=False"];
+        if (!string.IsNullOrWhiteSpace(userDirectory)) arguments.AddRange(["--user", Path.GetFullPath(userDirectory)]);
+        return new(Path.GetFullPath(executable), arguments, Path.GetDirectoryName(Path.GetFullPath(executable))!);
     }
 }
 

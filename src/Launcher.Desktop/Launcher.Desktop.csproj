@@ -6,4 +6,5 @@
     <AssemblyName>ConsoleLauncher</AssemblyName>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Launcher.Core/Launcher.Core.csproj" /></ItemGroup>
+  <ItemGroup><None Include="../../THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

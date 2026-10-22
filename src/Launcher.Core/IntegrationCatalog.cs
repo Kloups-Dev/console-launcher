@@ -4,7 +4,7 @@ public sealed record SystemDefinition(string Id, string Name, string Family, str
 {
     public string Integration => Adapters.Length > 0 ? "Module disponible · à configurer" : "Cataloguée · module à développer";
 }
-public sealed record EmulatorConfiguration(string AdapterId, string Executable, string? CorePath = null);
+public sealed record EmulatorConfiguration(string AdapterId, string Executable, string? CorePath = null, string? UserDirectory = null);
 
 public static class IntegrationCatalog
 {
@@ -63,7 +63,7 @@ public sealed class LaunchPlanner
             throw new FileNotFoundException("Le fichier du jeu est absent. Ajoutez ou retrouvez son fichier.");
         if (!system.Extensions.Contains(Path.GetExtension(game.FilePath).ToLowerInvariant()))
             throw new InvalidDataException("Ce format de fichier n'est pas prévu pour cette console.");
-        if (configuration.AdapterId == "dolphin") return new DolphinAdapter().Prepare(game, configuration.Executable);
+        if (configuration.AdapterId == "dolphin") return new DolphinAdapter().Prepare(game, configuration.Executable, configuration.UserDirectory);
         if (!File.Exists(configuration.Executable)) throw new FileNotFoundException("L'exécutable de l'émulateur est absent.");
         var executable = Path.GetFullPath(configuration.Executable);
         var content = Path.GetFullPath(game.FilePath);

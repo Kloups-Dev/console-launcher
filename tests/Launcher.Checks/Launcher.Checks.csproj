@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><OutputType>Exe</OutputType><UseWPF>true</UseWPF></PropertyGroup>
  <ItemGroup><ProjectReference Include="../../src/Launcher.Core/Launcher.Core.csproj"/></ItemGroup>
+ <ItemGroup><None Update="Fixtures/minimal.7z" CopyToOutputDirectory="PreserveNewest"/></ItemGroup>
 </Project>
