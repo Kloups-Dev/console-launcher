@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -42,8 +43,10 @@ public partial class MainWindow : Window
         }
         inputTimer.Tick += (_, _) =>
         {
-            var action = gamepad.Poll(IsActive && !modal && !sessions.IsRunning);
-            ControllerLabel.Text = gamepad.Connected ? "Manette Xbox compatible connectée" : "Clavier · Manette XInput non détectée";
+            var action = gamepad.Poll(IsActive && !modal && !sessions.IsRunning, sessions.IsRunning);
+            if (gamepad.ReturnRequested) RequestReturn();
+            if (!sessions.IsRunning)
+                ControllerLabel.Text = gamepad.Connected ? "Manette Xbox compatible connectée" : "Clavier · Manette XInput non détectée";
             if (action.HasValue) Navigate(action.Value);
         };
         inputTimer.Start();
@@ -181,13 +184,17 @@ public partial class MainWindow : Window
         try
         {
             var request = new DolphinAdapter().Prepare(game, library.DolphinPath!);
-            inputTimer.Stop();
+            using var hotkey = new SessionHotkey(new WindowInteropHelper(this).Handle, RequestReturn);
+            inputTimer.Interval = TimeSpan.FromMilliseconds(50);
             IsEnabled = false;
-            StatusLabel.Text = "Partie en cours. Fermez le jeu dans Dolphin pour revenir ici.";
+            StatusLabel.Text = hotkey.Registered ? "Partie en cours. Retour : Start + Back maintenus, ou Ctrl + Alt + Retour arrière."
+                : "Raccourci clavier indisponible. Retour : Start + Back maintenus, ou fermeture du jeu.";
             // Hide only after validation. The finally block restores the launcher on start failure too.
             Hide();
             var exit = await sessions.RunAsync(request);
-            StatusLabel.Text = exit == 0 ? "De retour dans votre bibliothèque." : $"La partie s'est arrêtée (code {exit}). Vérifiez les réglages Dolphin.";
+            StatusLabel.Text = exit == 0 ? (hotkey.Registered ? "De retour dans votre bibliothèque."
+                : "De retour. Le raccourci clavier était indisponible ; Start + Back reste utilisable.")
+                : $"La partie s'est arrêtée (code {exit}). Vérifiez les réglages Dolphin.";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { StatusLabel.Text = "Lancement impossible : " + ex.Message; }
@@ -196,9 +203,17 @@ public partial class MainWindow : Window
             IsEnabled = true;
             Show();
             Activate();
+            inputTimer.Interval = TimeSpan.FromMilliseconds(25);
             inputTimer.Start();
             Render();
         }
+    }
+
+    private void RequestReturn()
+    {
+        if (!sessions.IsRunning) return;
+        StatusLabel.Text = sessions.RequestStop() ? "Fermeture de la partie demandée…"
+            : "Fermeture indisponible : relâchez les boutons et réessayez, ou fermez la fenêtre du jeu.";
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)

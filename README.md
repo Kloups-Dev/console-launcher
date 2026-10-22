@@ -22,14 +22,16 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 ## État actuel
 
 - Dépôt : https://github.com/Kloups-Dev/console-launcher. Cykalos est administrateur du dépôt.
-- Prototype proposé dans la [PR n°1](https://github.com/Kloups-Dev/console-launcher/pull/1), branche `feat/desktop-foundation`, pas encore fusionné à cette mise à jour.
-- Prototype : Windows, C#/.NET 8 et WPF ; cœur indépendant de l'interface. Menu horizontal, bibliothèque JSON, navigation clavier/XInput, sélection de Dolphin et ajout d'un fichier GameCube pour lancement direct puis retour au menu.
-- Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
-- Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
+- Premier prototype Windows : [PR n°1](https://github.com/Kloups-Dev/console-launcher/pull/1), branche `feat/desktop-foundation`, encore ouverte lors de cette mise à jour.
+- Atelier fonctionnel : [PR n°4](https://github.com/Kloups-Dev/console-launcher/pull/4), branche `feat/functional-workbench`, proposée sur la branche du premier prototype, pas fusionnée. L'autre prototype Rust/Tauri reste une proposition distincte.
+- Atelier : C#/.NET 8, WPF pour l'écran de travail ; cœur indépendant de WPF. Listes et boutons pour configurer chaque console, importer des fichiers locaux, préparer la commande, lancer directement, demander une fermeture normale et exporter un diagnostic. Aucun titre fictif ajouté au démarrage.
+- Trois modules : Dolphin (GameCube/Wii), PCSX2 (PS2), RetroArch (systèmes indiqués disponibles, cœur adapté à choisir). Le catalogue de 36 systèmes distingue explicitement les intégrations absentes : présence au catalogue ne signifie pas compatibilité.
+- Limites : émulateurs/cœurs/BIOS et contrôles à installer/configurer ; pas de profils automatiques par matériel/jeu ni de correctifs audio/vidéo. Atelier au clavier/souris, retour XInput en partie. Aucune garantie de compatibilité déduite de la présence des fichiers. Pas d'installateur autonome.
+- Vérifications de l'atelier : compilation Release sans erreur ni avertissement, 63 contrôles locaux réussis, trois onglets WPF rendus et inspectés, dossier portable publié. Vérifications GitHub à consulter dans la PR. Aucun essai avec vrai jeu/manette physique, ni benchmark.
 
-## Essayer le prototype
+## Essayer l'atelier
 
-Ces commandes concernent la branche du prototype. Prérequis : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
+Sur `feat/functional-workbench`. Pour développer : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
 
 ```powershell
 dotnet run --project src/Launcher.Desktop/Launcher.Desktop.csproj
@@ -37,9 +39,17 @@ dotnet build src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Releas
 dotnet run --project tests/Launcher.Checks/Launcher.Checks.csproj --configuration Release
 ```
 
-Flèches/XInput pour naviguer ; Entrée/A pour choisir ; Échap/B pour revenir ; F11 pour le plein écran. Dans Réglages, sélectionner Dolphin.exe, ajouter son fichier GameCube puis jouer. Fermer la partie dans Dolphin pour revenir.
+Choisir une console à gauche. Dans **Configuration de la console**, sélectionner l'exécutable et, pour RetroArch, le cœur Windows `.dll`, puis enregistrer. Dans **Bibliothèque et lancement**, ajouter ses fichiers locaux, vérifier la préparation et lancer. L'atelier se réduit pendant la partie et revient à sa fin.
 
-Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; les réglages et sauvegardes Dolphin existants sont utilisés. Le dossier portable nécessite .NET Desktop Runtime 8.
+Retour : fermeture normale du jeu, bouton de demande de fermeture, Ctrl + Alt + Retour arrière, ou Start + Back maintenus 1,5 seconde sur une manette XInput. Le raccourci clavier est enregistré seulement pendant la session ; si indisponible, un message le signale. Aucun arrêt forcé. Certains émulateurs peuvent demander une confirmation.
+
+Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; retirer une entrée ne supprime aucun fichier. Les réglages et sauvegardes existants des émulateurs restent utilisés. Le dossier portable nécessite .NET Desktop Runtime 8. Les vérifications de préparation contrôlent les chemins et la commande, pas la compatibilité réelle du jeu, du BIOS ou du cœur.
+
+## Passerelle entre fonctionnement et future interface
+
+`ILauncherBackend` expose la bibliothèque, la configuration par console, l'import, le retrait d'entrée, la préparation, le lancement, la demande de fermeture et le diagnostic. Les états publiés sont : disponible, préparation, partie en cours, fermeture demandée, terminé et erreur. La future interface peut appeler ce contrat sans reprendre le code des boutons WPF. Le cœur est testable sans l'écran ; les processus et leurs arguments sont traités séparément.
+
+La prochaine validation est un essai réel par module avec les jeux et le matériel des utilisateurs, puis des mesures du temps de lancement, du retour et de la consommation pendant une partie. Les profils de qualité et le design final restent à développer sur cette base.
 
 ## Journal partagé
 
@@ -55,3 +65,10 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Fait : un seul document général, suppression des anciens guides et consignes redondantes.
 - Vérifié : renvois documentaires et cohérence du contenu ; aucun code applicatif modifié.
 - Publication : simplification fusionnée sur `main` par la PR n°3. Le prototype a été aligné dans `a2f635d` ; sa PR n°1 reste ouverte.
+
+### 2026-10-23 — Atelier fonctionnel publié
+
+- Code : `3eabedb`, branche `feat/functional-workbench`, PR n°4 ouverte sur `feat/desktop-foundation` ; pas fusionné sur `main`.
+- Fait : écran de travail simple, contrat de cœur indépendant, configuration par console, import réel, trois modules de lancement, diagnostic et retour normal de session.
+- Vérifié : 63 contrôles locaux, compilation Release, rendu des trois onglets et publication portable Windows. Contrôles GitHub visibles dans la PR.
+- Limites : pas encore de tests avec jeux/manettes physiques, de benchmark, de profils automatiques ou de design final. Autres modules encore à intégrer.

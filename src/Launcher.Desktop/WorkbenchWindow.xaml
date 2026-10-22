@@ -1,0 +1,83 @@
+<Window x:Class="Launcher.Desktop.WorkbenchWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Console Launcher — Atelier fonctionnel" Width="1380" Height="900" MinWidth="1080" MinHeight="760"
+ WindowStartupLocation="CenterScreen" Background="#F4F5F7" Foreground="#202630" FontFamily="Segoe UI">
+ <Window.Resources>
+  <Style TargetType="Button"><Setter Property="Padding" Value="12,7"/><Setter Property="Margin" Value="0,0,8,0"/><Setter Property="MinHeight" Value="32"/></Style>
+  <Style TargetType="TextBox"><Setter Property="Padding" Value="6"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
+  <Style TargetType="GroupBox"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,0,10"/></Style>
+ </Window.Resources>
+ <DockPanel>
+  <Menu DockPanel.Dock="Top">
+   <MenuItem Header="_Fichier"><MenuItem Header="Ajouter des jeux…" Click="OnImport"/><Separator/><MenuItem Header="Quitter" Click="OnExit"/></MenuItem>
+   <MenuItem Header="_Affichage"><MenuItem Header="Ouvrir le dossier de données" Click="OnOpenData"/></MenuItem>
+  </Menu>
+  <StatusBar DockPanel.Dock="Bottom"><TextBlock x:Name="StatusText" TextWrapping="Wrap"/></StatusBar>
+  <Grid Margin="16">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <StackPanel Margin="0,0,0,16"><TextBlock Text="Atelier fonctionnel" FontSize="25" FontWeight="SemiBold"/>
+    <TextBlock Text="Configurer, préparer, lancer et diagnostiquer — avant le travail sur l'apparence finale." Foreground="#586473" Margin="0,5,0,0"/>
+   </StackPanel>
+   <Grid Grid.Row="1">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="245"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <DockPanel><TextBlock DockPanel.Dock="Top" Text="CATALOGUE DES CONSOLES" FontWeight="SemiBold" Margin="0,0,0,8"/>
+     <TextBlock DockPanel.Dock="Bottom" Text="Cataloguée ≠ intégrée. La présence dans cette liste ne garantit pas une émulation utilisable." TextWrapping="Wrap" Foreground="#586473" Margin="0,10,0,0"/>
+     <ListBox x:Name="SystemsList" SelectionChanged="OnSystemChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4,6"><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/><TextBlock Text="{Binding Family}" FontSize="11" Foreground="#66717D"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+    </DockPanel>
+    <Grid Grid.Column="2">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <StackPanel><TextBlock x:Name="SystemName" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="IntegrationText" Foreground="#586473" Margin="0,5,0,12" TextWrapping="Wrap"/></StackPanel>
+     <TabControl x:Name="WorkspaceTabs" Grid.Row="1">
+      <TabItem Header="Bibliothèque et lancement">
+       <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,10"><StackPanel DockPanel.Dock="Left" Orientation="Horizontal"><Button x:Name="ImportButton" Content="Ajouter des jeux…" Click="OnImport"/><Button x:Name="RemoveButton" Content="Retirer l'entrée" Click="OnRemove"/></StackPanel>
+         <TextBlock Text="Rechercher :" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="6,0,8,0"/>
+         <TextBox x:Name="SearchBox" TextChanged="OnSearchChanged" ToolTip="Filtrer les titres de la console" MinWidth="150"/>
+        </DockPanel>
+        <DataGrid x:Name="GamesGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False" SelectionChanged="OnGameChanged" EnableRowVirtualization="True">
+         <DataGrid.Columns><DataGridTextColumn Header="Jeu" Binding="{Binding Title}" Width="2*"/><DataGridTextColumn Header="Fichier local" Binding="{Binding FilePath}" Width="3*"/></DataGrid.Columns>
+        </DataGrid>
+        <GroupBox Grid.Row="2" Header="Préparation de la partie" Margin="0,12,0,10">
+         <StackPanel><TextBlock x:Name="PreparationText" Text="Sélectionnez ou ajoutez un jeu." TextWrapping="Wrap"/>
+          <TextBox x:Name="PlanText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" Background="#F8F9FA"/>
+         </StackPanel>
+        </GroupBox>
+        <StackPanel Grid.Row="3"><StackPanel Orientation="Horizontal"><Button x:Name="PrepareButton" Content="Vérifier la préparation" Click="OnPrepare"/><Button x:Name="StartButton" Content="Lancer le jeu" Click="OnStart" FontWeight="SemiBold"/><Button x:Name="StopButton" Content="Demander la fermeture" Click="OnStop"/></StackPanel>
+         <TextBlock Text="En partie : Start + Back maintenus 1,5 s, ou Ctrl + Alt + Retour arrière. Aucun arrêt forcé." Foreground="#586473" FontSize="12" Margin="0,9,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+       </Grid>
+      </TabItem>
+      <TabItem Header="Configuration de la console">
+       <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="16">
+        <TextBlock Text="Module de lancement" FontWeight="SemiBold"/>
+        <ComboBox x:Name="AdapterBox" SelectionChanged="OnAdapterChanged" Margin="0,7,0,16" MinHeight="32"/>
+        <TextBlock Text="Exécutable de l'émulateur" FontWeight="SemiBold"/>
+        <DockPanel Margin="0,7,0,16"><Button Content="Parcourir…" Click="OnBrowseExecutable" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="ExecutableBox"/></DockPanel>
+        <StackPanel x:Name="CorePanel"><TextBlock Text="Cœur RetroArch pour cette console (.dll)" FontWeight="SemiBold"/><DockPanel Margin="0,7,0,16"><Button Content="Parcourir…" Click="OnBrowseCore" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="CoreBox"/></DockPanel></StackPanel>
+        <Button x:Name="SaveConfigurationButton" Content="Enregistrer cette configuration" Click="OnSaveConfiguration" HorizontalAlignment="Left"/>
+        <GroupBox Header="Profil actuellement appliqué" Margin="0,24,0,0"><StackPanel>
+         <TextBlock Text="Réglages personnels de l'émulateur + lancement direct en plein écran." TextWrapping="Wrap"/>
+         <TextBlock Text="Le lanceur ne réécrit pas vos fichiers de configuration d'émulateur. Les BIOS, cœurs, contrôles en jeu et correctifs avancés ne sont pas encore vérifiés automatiquement." TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
+         <TextBlock Text="Le chemin peut être conservé avant installation ; la préparation signalera tout fichier absent. Un cœur existant n'est pas une preuve de compatibilité avec le jeu choisi." TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
+        </StackPanel></GroupBox>
+       </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="État et diagnostic">
+       <Grid Margin="14"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock x:Name="SessionPhaseText" FontSize="20" FontWeight="SemiBold"/>
+        <TextBlock x:Name="SessionMessageText" Grid.Row="1" TextWrapping="Wrap" Margin="0,8,0,12"/>
+        <ListBox x:Name="DiagnosticsList" Grid.Row="2" FontFamily="Consolas" FontSize="12" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+         <ListBox.ItemTemplate><DataTemplate><TextBlock TextWrapping="Wrap"><Run Text="{Binding At, StringFormat=HH:mm:ss}"/><Run Text="  "/><Run Text="{Binding Message}"/></TextBlock></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+        <Button Grid.Row="3" Content="Exporter le diagnostic…" Click="OnExport" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+       </Grid>
+      </TabItem>
+     </TabControl>
+    </Grid>
+   </Grid>
+  </Grid>
+ </DockPanel>
+</Window>

@@ -51,7 +51,8 @@
   </Grid>
   <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
    <StackPanel><TextBlock x:Name="StatusLabel" Text="Prototype · Les titres de démonstration sont fictifs." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"/>
-    <TextBlock Text="← → Naviguer     Entrée / A Choisir     Échap / B Retour     F11 Plein écran" FontSize="12" Margin="0,8,0,0"/>
+    <TextBlock Text="← → Naviguer    Entrée / A Choisir    Échap / B Retour    F11 Plein écran" FontSize="12" Margin="0,8,0,0"/>
+    <TextBlock Text="Quitter une partie : Start + Back maintenus 1,5 s · Ctrl + Alt + Retour arrière" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,5,0,0"/>
    </StackPanel><TextBlock x:Name="ControllerLabel" Grid.Column="1" Text="Clavier disponible" Foreground="#92E5C5" VerticalAlignment="Bottom" Margin="16,0,0,0"/>
   </Grid>
  </Grid>

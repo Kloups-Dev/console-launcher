@@ -16,19 +16,32 @@ internal sealed class Gamepad
     private ushort lastButtons;
     private NavigationAction? heldDirection;
     private long repeatAt;
+    private readonly HoldGesture returnGesture = new(1500);
+    private uint? controllerIndex;
     public bool Connected { get; private set; }
+    public bool ReturnRequested { get; private set; }
 
-    public NavigationAction? Poll(bool acceptInput)
+    public NavigationAction? Poll(bool acceptInput, bool sessionActive = false)
     {
         State state = default;
         Connected = false;
+        uint? foundIndex = null;
         for (uint i = 0; i < 4; i++)
         {
             if (XInputGetState(i, out state) != 0) continue;
             Connected = true;
+            foundIndex = i;
             break;
         }
+        if (controllerIndex != foundIndex)
+        {
+            returnGesture.Reset();
+            lastButtons = 0;
+            heldDirection = null;
+            controllerIndex = foundIndex;
+        }
         var buttons = Connected ? state.Pad.Buttons : (ushort)0;
+        ReturnRequested = returnGesture.Update(sessionActive && Connected && (buttons & 0x30) == 0x30, Environment.TickCount64);
         var pressed = (ushort)(buttons & ~lastButtons);
         lastButtons = buttons;
         if (!acceptInput || !Connected) { heldDirection = null; return null; }
