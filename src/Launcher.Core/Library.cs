@@ -8,6 +8,7 @@ public sealed class LibraryData
 {
     public string? DolphinPath { get; set; }
     public List<GameEntry> Games { get; set; } = [];
+    public Dictionary<string, EmulatorConfiguration> Configurations { get; set; } = [];
 }
 
 public static class Catalog
@@ -37,6 +38,8 @@ public sealed class LibraryStore(string path)
         if (data.Games is null || data.Games.Any(g => g is null || string.IsNullOrWhiteSpace(g.Id)
             || string.IsNullOrWhiteSpace(g.SystemId) || string.IsNullOrWhiteSpace(g.Title)))
             throw new InvalidDataException("La bibliothèque contient des entrées invalides.");
+        if (data.Configurations is null || data.Configurations.Any(c => c.Value is null))
+            throw new InvalidDataException("La configuration des émulateurs est invalide.");
         return data;
     }
 
