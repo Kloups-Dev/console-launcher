@@ -4,6 +4,32 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [0.2.0] — 2026-10-23 — Interface comparison
+
+### English
+
+**Added**
+- Third interface prototype in C++17 / Qt Quick (`qt-prototype/`): QML themes loaded from disk ("horizon", "grid"), SDL2 controller input, same Rust engine through `clctl`, SDL shut down and window hidden during games.
+- `clctl info` and `clctl favorite` commands, used by the Qt interface.
+- Measurement tools: `tools/measure-launcher.ps1` (Windows) and `tools/measure-linux.py` (Linux), counting the launcher and its child processes, not the emulator.
+- Comparison of the WPF, Tauri and Qt Quick prototypes with real Linux measurements (`docs/comparison/`).
+
+**Changed**
+- CPU test reference recalibrated on a release build (a 2.8 GHz cloud Xeon core now scores about 600).
+- Tauri prototype: controller polling slowed down 25 times while a game runs.
+
+### Français
+
+**Ajouts**
+- Troisième prototype d'interface en C++17 / Qt Quick (`qt-prototype/`) : thèmes QML lus depuis le disque (« horizon », « grid »), manettes via SDL2, même moteur Rust via `clctl`, SDL arrêté et fenêtre masquée pendant les jeux.
+- Commandes `clctl info` et `clctl favorite`, utilisées par l'interface Qt.
+- Outils de mesure : `tools/measure-launcher.ps1` (Windows) et `tools/measure-linux.py` (Linux), qui comptent le lanceur et ses processus enfants, pas l'émulateur.
+- Comparaison des prototypes WPF, Tauri et Qt Quick avec des mesures réelles sous Linux (`docs/comparison/`).
+
+**Modifications**
+- Référence du test CPU recalibrée sur une compilation Release (un cœur Xeon cloud à 2,8 GHz obtient environ 600).
+- Prototype Tauri : interrogation de la manette 25 fois moins fréquente pendant un jeu.
+
 ## [0.1.0] — 2026-10-22 — Prototype
 
 ### English

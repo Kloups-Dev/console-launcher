@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 use std::hint::black_box;
 use std::time::Instant;
 
-/// Duration of one pass on the reference machine. Set from the first
-/// calibration run; see docs/prototype/PERFORMANCE.fr.md.
-const REFERENCE_NS: f64 = 250_000_000.0;
+/// Duration of one pass on the reference machine (score 1000), release build.
+/// Provisional value: a 2.8 GHz cloud Xeon core runs a pass in ~105 ms and
+/// scores ~600; recent desktop CPUs are expected around 1000–1400. To be
+/// refined with real machines, see docs/prototype/PERFORMANCE.*.md.
+const REFERENCE_NS: f64 = 63_000_000.0;
 const PASSES: usize = 3;
 const STEPS: u32 = 40_000_000;
 

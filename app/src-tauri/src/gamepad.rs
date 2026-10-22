@@ -162,7 +162,14 @@ pub fn spawn(app: AppHandle, paused: Arc<AtomicBool>) {
                         held = Some((n, since, now));
                     }
                 }
-                std::thread::sleep(Duration::from_millis(8));
+                // While a game runs, poll 25 times less often: the launcher
+                // ignores input then and should cost almost nothing.
+                let idle = if paused.load(Ordering::Relaxed) {
+                    200
+                } else {
+                    8
+                };
+                std::thread::sleep(Duration::from_millis(idle));
             }
         })
         .expect("spawn gamepad thread");

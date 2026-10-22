@@ -52,11 +52,18 @@ enum Cmd {
     },
     /// Go back to the previously installed version of a managed emulator.
     Rollback { id: String },
+    /// Toggle a game's favourite flag (id or title search).
+    Favorite { query: String },
+    /// Launch summary for interfaces: emulator, quality, notes (JSON).
+    Info { query: String },
 }
 
 fn find_game(engine: &Engine, query: &str) -> Result<Game> {
     let q = query.to_lowercase();
     let games = engine.games();
+    if let Some(g) = games.iter().find(|g| g.id == query) {
+        return Ok(g.clone());
+    }
     let mut hits: Vec<_> = games
         .iter()
         .filter(|g| g.id == query || g.title.to_lowercase().contains(&q))
@@ -339,6 +346,35 @@ fn run() -> Result<()> {
                     println!("Set [emulators.{id}] mode = \"managed\" in config.toml to use it.");
                 }
             }
+        }
+        Cmd::Favorite { query } => {
+            let game = find_game(&engine, &query)?;
+            let on = engine.toggle_favorite(&game.id)?;
+            print(json, &on, || {
+                println!(
+                    "{}: favourite {}",
+                    game.title,
+                    if on { "on" } else { "off" }
+                )
+            });
+        }
+        Cmd::Info { query } => {
+            let game = find_game(&engine, &query)?;
+            let info = match engine.prepare(&game) {
+                Ok((p, t)) => serde_json::json!({
+                    "ready": true,
+                    "emulator": p.emulator,
+                    "step": p.step,
+                    "stepLabel": p.step_label,
+                    "ladder": p.ladder,
+                    "measure": p.measure,
+                    "settled": t.state.done,
+                    "belowRequirements": t.state.below_requirements,
+                    "notes": p.notes,
+                }),
+                Err(e) => serde_json::json!({ "ready": false, "error": e.to_string() }),
+            };
+            println!("{info}");
         }
         Cmd::Rollback { id } => {
             let m = ManagedEmulator::new(&engine.paths.emulators_dir(), &id);
