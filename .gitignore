@@ -21,3 +21,7 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Rust / Tauri build output
+/target/
+/app/src-tauri/gen/

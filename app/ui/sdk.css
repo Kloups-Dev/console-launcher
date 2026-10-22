@@ -1,0 +1,18 @@
+/* Styles of the SDK itself (boot screen, settings panel, error box).
+   Themes style everything else. */
+html, body { margin: 0; height: 100%; background: #0b0d12; color: #e8ecf4; font-family: system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+#cl-boot { display: grid; place-items: center; height: 100%; letter-spacing: .3em; text-transform: uppercase; opacity: .5; }
+
+.cl-settings { position: fixed; inset: 0; background: rgba(5, 7, 12, .72); backdrop-filter: blur(8px); display: grid; place-items: center; z-index: 9999; }
+.cl-panel { width: min(640px, 92vw); max-height: 88vh; overflow: auto; background: #151a24; border: 1px solid #2a3244; border-radius: 16px; padding: 24px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+.cl-panel h2 { margin: 0 0 16px; font-weight: 600; font-size: 20px; }
+.cl-row { display: flex; width: 100%; justify-content: space-between; gap: 16px; align-items: center; padding: 12px 14px; margin: 4px 0; border: 1px solid transparent; border-radius: 10px; background: #1b2130; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cl-row b { opacity: .85; font-weight: 600; }
+.cl-row.focused { border-color: #ffc440; background: #232b3d; }
+.cl-block { padding: 10px 14px; margin: 8px 0; border-radius: 10px; background: #111520; display: grid; gap: 6px; }
+.cl-block > span { font-size: 13px; opacity: .7; }
+.cl-block code { font-size: 13px; word-break: break-all; }
+.cl-block input { padding: 8px 10px; border-radius: 8px; border: 1px solid #2a3244; background: #0b0d12; color: inherit; font: inherit; }
+
+.cl-error { position: fixed; left: 24px; right: 24px; bottom: 24px; padding: 16px 20px; background: #3a1418; border: 1px solid #a33; border-radius: 12px; z-index: 9998; }
+.cl-error pre { white-space: pre-wrap; font-size: 12px; max-height: 40vh; overflow: auto; }

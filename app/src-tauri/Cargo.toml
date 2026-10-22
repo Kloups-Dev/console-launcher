@@ -1,0 +1,25 @@
+[package]
+name = "console-launcher"
+description = "Console Launcher desktop application (Tauri)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "console_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
+gilrs = "0.11"
+cl-core.workspace = true
+cl-engine.workspace = true
+cl-adapters.workspace = true
+cl-perf.workspace = true

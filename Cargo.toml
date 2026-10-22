@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cl-core",
+    "crates/cl-hwprobe",
+    "crates/cl-library",
+    "crates/cl-adapters",
+    "crates/cl-perf",
+    "crates/cl-session",
+    "crates/cl-updater",
+    "crates/cl-engine",
+    "crates/cl-cli",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+# Licence of this project: to be chosen, see docs/prototype/README.en.md.
+publish = false
+
+[workspace.dependencies]
+cl-core = { path = "crates/cl-core" }
+cl-hwprobe = { path = "crates/cl-hwprobe" }
+cl-library = { path = "crates/cl-library" }
+cl-adapters = { path = "crates/cl-adapters" }
+cl-perf = { path = "crates/cl-perf" }
+cl-session = { path = "crates/cl-session" }
+cl-updater = { path = "crates/cl-updater" }
+cl-engine = { path = "crates/cl-engine" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+directories = "6"
+walkdir = "2"
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+ash = { version = "0.38", default-features = false, features = ["loaded", "std"] }
+ureq = { version = "3", features = ["json"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }
+sevenz-rust2 = "0.18"
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,16 @@
+[package]
+name = "cl-adapters"
+description = "Emulator adapters: detection, launch command and quality settings"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+cl-core.workspace = true
+serde.workspace = true
+log.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

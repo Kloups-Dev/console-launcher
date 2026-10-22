@@ -1,0 +1,45 @@
+# Console Launcher — config.toml example / exemple
+# Copy to the data folder / Copier dans le dossier de données :
+#   Windows: %APPDATA%\ConsoleLauncher\console-launcher\data\config.toml
+#   Linux:   ~/.local/share/console-launcher/config.toml
+# Every key is optional / Toutes les clés sont facultatives.
+
+# Game folders, one sub-folder per console (snes, ps2, gc…)
+# Dossiers de jeux, un sous-dossier par console
+rom_dirs = ["D:/Jeux", "E:/Retro"]
+
+# BIOS / firmware dumped from your own consoles
+# BIOS / firmwares extraits de vos propres consoles
+bios_dir = "D:/Jeux/bios"
+
+theme = "horizon"
+language = "fr"
+
+[perf]
+auto_tune = true              # automatic optimisation / optimisation automatique
+capture_seconds = 60          # measurement length / durée de la mesure
+capture_delay_seconds = 20    # skip loading screens / ignorer les chargements
+# presentmon_path = "C:/Tools/PresentMon.exe"   # Windows only / Windows uniquement
+
+# Which emulator for which console (defaults shown in the docs)
+# Quel émulateur pour quelle console
+[system_emulator]
+# psx = "retroarch"
+
+# External install: the launcher never edits its files
+# Installation externe : le lanceur ne modifie jamais ses fichiers
+[emulators.retroarch]
+mode = "external"
+path = "C:/RetroArch-Win64/retroarch.exe"
+
+[emulators.dolphin]
+mode = "external"
+# path is auto-detected when omitted / détecté automatiquement si absent
+
+# Managed install: downloaded, updated and optimised by the launcher
+# Installation gérée : téléchargée, mise à jour et optimisée par le lanceur
+[emulators.pcsx2]
+mode = "managed"
+updates = "auto"              # auto | notify | off
+# pinned = "2.2.0"            # keep this version / garder cette version
+locked_keys = []              # e.g. ["EmuCore/GS/upscale_multiplier"]

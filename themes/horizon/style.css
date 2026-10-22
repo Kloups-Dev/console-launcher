@@ -1,0 +1,90 @@
+/* Horizon — default template. Every colour and size is a variable:
+   copy this folder, rename it, and change the values below to start
+   your own theme. */
+:root {
+  --accent: var(--opt-accent, #ffc440);
+  --bg: #0b0d12;
+  --panel: rgba(255, 255, 255, .045);
+  --text: #eef1f7;
+  --muted: #8a93a6;
+  --nintendo: #e4505a;
+  --sony: #4f7cff;
+  --sega: #20b3c9;
+  --radius: 14px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+}
+
+.hz {
+  position: fixed; inset: 0; display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  color: var(--text); background: var(--bg);
+  font-family: "Segoe UI", system-ui, Roboto, sans-serif;
+}
+html[data-opt-background="aurora"] .hz {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--sys, var(--accent)) 28%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgba(80, 90, 255, .18), transparent 60%),
+    var(--bg);
+  transition: background .6s var(--ease);
+}
+
+.hz-top { display: flex; justify-content: space-between; align-items: center; padding: 22px 48px 8px; }
+.hz-brand { letter-spacing: .25em; text-transform: uppercase; font-size: 13px; color: var(--muted); }
+.hz-status { display: flex; gap: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+html[data-opt-clock="false"] .hz-clock { display: none; }
+
+/* Systems row */
+.hz-systems {
+  display: flex; gap: 14px; padding: 18px 48px 24px; overflow: hidden;
+  scroll-behavior: smooth;
+}
+.hz-sys {
+  flex: 0 0 auto; min-width: 150px; padding: 16px 20px; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid transparent;
+  transition: transform .25s var(--ease), border-color .2s, opacity .2s;
+  opacity: .55;
+}
+.hz-sys .name { font-size: 18px; font-weight: 600; white-space: nowrap; }
+.hz-sys .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.hz-sys.current { opacity: 1; border-color: color-mix(in srgb, var(--sys) 70%, transparent); transform: translateY(-2px); }
+.hz-sys .bar { height: 3px; border-radius: 2px; background: var(--sys); margin-bottom: 10px; width: 28px; }
+.hz.focus-systems .hz-sys.current { transform: scale(1.06); box-shadow: 0 10px 40px color-mix(in srgb, var(--sys) 30%, transparent); }
+.hz-sys .warn { color: #ff8a65; }
+
+/* Games list + detail */
+.hz-body { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.1fr); gap: 36px; padding: 0 48px; min-height: 0; }
+.hz-games { list-style: none; margin: 0; padding: 0; overflow: hidden; position: relative; }
+.hz-game {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px;
+  font-size: 18px; color: var(--muted); transition: background .15s, color .15s, transform .2s var(--ease);
+}
+.hz-game.current { color: var(--text); background: var(--panel); }
+.hz.focus-games .hz-game.current { background: color-mix(in srgb, var(--accent) 16%, transparent); transform: translateX(6px); box-shadow: inset 3px 0 0 var(--accent); }
+.hz-game .fav { color: var(--accent); margin-left: auto; }
+.hz-empty { color: var(--muted); padding: 20px 4px; line-height: 1.6; }
+
+.hz-detail { align-self: start; display: grid; gap: 14px; min-height: 0; overflow: hidden; }
+.hz-cover {
+  width: 100%; height: min(44vh, 440px); border-radius: var(--radius); background: var(--panel) center / contain no-repeat;
+  display: grid; place-items: center; overflow: hidden;
+}
+.hz-cover.placeholder { background: linear-gradient(135deg, color-mix(in srgb, var(--sys) 40%, #111), #111 70%); }
+.hz-cover .initials { font-size: 72px; font-weight: 700; opacity: .5; letter-spacing: .05em; }
+.hz-title { font-size: 26px; font-weight: 650; line-height: 1.2; }
+.hz-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.hz-chip { font-size: 13px; padding: 5px 10px; border-radius: 999px; background: var(--panel); color: var(--muted); }
+.hz-chip.accent { color: #111; background: var(--accent); }
+.hz-chip.warn { color: #111; background: #ff8a65; }
+.hz-notes { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; padding-left: 18px; }
+
+.hz-help { display: flex; gap: 22px; justify-content: flex-end; padding: 16px 48px 22px; color: var(--muted); font-size: 13px; }
+.hz-help kbd { display: inline-block; min-width: 18px; padding: 1px 6px; margin-right: 6px; border-radius: 6px; background: var(--panel); border: 1px solid rgba(255,255,255,.12); font: inherit; text-align: center; color: var(--text); }
+
+.hz-session[hidden] { display: none; }
+.hz-session { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5,7,12,.85); font-size: 20px; text-align: center; }
+.hz-session small { display: block; margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+@media (max-width: 900px) {
+  .hz-body { grid-template-columns: 1fr; }
+  .hz-detail { display: none; }
+}

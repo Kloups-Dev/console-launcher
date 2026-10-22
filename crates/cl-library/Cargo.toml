@@ -1,0 +1,15 @@
+[package]
+name = "cl-library"
+description = "Game library: scans user folders and assigns games to systems"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+cl-core.workspace = true
+serde.workspace = true
+walkdir.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
