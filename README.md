@@ -1,64 +1,57 @@
-# Console Launcher — nom provisoire
+# Console Launcher — contexte et suivi commun
 
-Lanceur d'émulation PC à installer, utilisable à la manette, avec une interface originale et fluide.
+Ce document est la référence commune pour les humains et leurs IA.
 
-Parcours : **menu → console → jeu → partie → retour au menu**. Les bibliothèques des émulateurs ne sont pas des étapes visibles.
+## Le projet
+
+Un logiciel d'émulation à installer sur PC, avec un menu original, joli et fluide, utilisable à la manette. Consoles accessibles de gauche à droite, puis sélection des jeux. La PS3 est un exemple de simplicité de navigation, pas une interface à reproduire.
+
+Parcours : **menu → console → jeu → partie → retour au menu**. Les menus et bibliothèques des émulateurs ne sont pas une étape visible. Les réglages restent accessibles et compréhensibles : il ne s'agit pas de supprimer tous les paramètres.
+
+Réutiliser les émulateurs existants. Intention de publier en open source ; nom définitif et licence à choisir. Aucun jeu ou BIOS fourni. Pas d'objectif de réseau social demandé. Aucun gain de performance encore démontré.
+
+## Fonctionnement entre IA
+
+- Au début de chaque nouvelle phase de code, synchroniser le dépôt, lire ce document et consulter les changements des autres branches utiles. Signaler si l'accès réseau empêche d'actualiser le contexte.
+- Chaque IA est indépendante dans le périmètre fixé par les humains. Aucune IA ne dirige l'autre, ne lui attribue de tâche ou de fichiers, ni ne lui impose une technologie ou une voie de développement.
+- Les choix existants décrivent le travail réalisé ; ils peuvent être améliorés ou remis en question. Préserver les changements d'autrui et signaler les conflits.
+- Après chaque push de code, mettre à jour l'état et ajouter une courte entrée au journal. Envoyer cette mise à jour dans un petit commit de suivi. Un push de suivi documentaire ne demande pas une nouvelle entrée : pas de boucle.
+- Indiquer date, branche, commit de code, changements, vérifications réellement faites et limites. Distinguer travail envoyé, fusionné et encore local. Ne pas écrire de secrets ici.
+- Garder l'état actuel court ; le détail historique reste dans Git et les pull requests. Si deux IA changent le journal, conserver les deux contributions lors de la résolution du conflit.
 
 ## État actuel
 
-Premier prototype Windows proposé : menu natif C#/.NET 8 et WPF, navigation clavier/XInput, bibliothèque locale et lancement direct GameCube avec Dolphin déjà installé. La technologie reste à relire et la licence du projet reste à choisir. Ne pas annoncer ce dépôt comme un logiciel open source sous licence tant que celle-ci n'est pas choisie.
+- Dépôt : https://github.com/Kloups-Dev/console-launcher. Cykalos est administrateur du dépôt.
+- Prototype proposé dans la [PR n°1](https://github.com/Kloups-Dev/console-launcher/pull/1), branche `feat/desktop-foundation`, pas encore fusionné à cette mise à jour.
+- Prototype : Windows, C#/.NET 8 et WPF ; cœur indépendant de l'interface. Menu horizontal, bibliothèque JSON, navigation clavier/XInput, sélection de Dolphin et ajout d'un fichier GameCube pour lancement direct puis retour au menu.
+- Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
+- Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
 
 ## Essayer le prototype
 
-Prérequis de développement : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
+Ces commandes concernent la branche du prototype. Prérequis : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
 
 ```powershell
 dotnet run --project src/Launcher.Desktop/Launcher.Desktop.csproj
-```
-
-- Flèches : choisir une console puis un jeu.
-- Entrée ou bouton A : choisir ; Échap ou bouton B : retour.
-- F11 : plein écran. Souris et tabulation également disponibles.
-- Réglages : sélectionner votre Dolphin.exe existant.
-- Ajouter un jeu : choisir votre fichier GameCube local, puis Jouer.
-- Fermer la partie dans Dolphin : retour au lanceur.
-
-Les jeux affichés avant importation sont des titres fictifs et ne se lancent pas. PS2 et SNES sont des aperçus visuels, sans adaptateur fonctionnel pour le moment. Les manettes prises en charge dans le menu sont les modèles exposés via XInput ; les réglages de contrôles en jeu restent ceux de Dolphin. Les réglages et l'ajout de fichiers nécessitent encore le clavier ou la souris.
-
-Bibliothèque du lanceur : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les fichiers de jeux ne sont ni déplacés ni copiés. Le contenu du jeu n'est pas identifié ou validé lors de l'import : Dolphin le vérifie au démarrage. Ce prototype ne télécharge ni émulateur, ni jeu, ni BIOS.
-
-## Vérifier et publier un dossier portable
-
-```powershell
 dotnet build src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release
 dotnet run --project tests/Launcher.Checks/Launcher.Checks.csproj --configuration Release
-dotnet publish src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release --self-contained false -o dist/windows
 ```
 
-Le dossier publié nécessite le runtime .NET Desktop 8 sur le PC cible. Il ne constitue pas encore un installateur autonome.
+Flèches/XInput pour naviguer ; Entrée/A pour choisir ; Échap/B pour revenir ; F11 pour le plein écran. Dans Réglages, sélectionner Dolphin.exe, ajouter son fichier GameCube puis jouer. Fermer la partie dans Dolphin pour revenir.
 
-Architecture et frontières de contribution : `docs/ARCHITECTURE.md`. État des vérifications : `docs/VALIDATION.md`.
+Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; les réglages et sauvegardes Dolphin existants sont utilisés. Le dossier portable nécessite .NET Desktop Runtime 8.
 
-## Objectifs
+## Journal partagé
 
-- Consoles accessibles de gauche à droite, présentation libre sans reproduction obligatoire de la PS3.
-- Jeux classés, jaquettes et favoris.
-- Configuration guidée, options compréhensibles et réglages avancés accessibles.
-- Manette dans l'interface et dans les jeux pris en charge.
-- Émulateurs existants, intégrés par adaptateurs.
-- Mises à jour validées et retour à la version précédente.
+### 2026-10-22 — Premier socle publié
 
-## Travailler à deux avec des IA
+- Code : `7b52097`, branche `feat/desktop-foundation`, PR n°1 ouverte.
+- Fait : prototype, navigation, stockage et premier adaptateur Dolphin ; vérifications et limites ci-dessus.
+- Suivi : `fc67ebb` retire les attributions de rôles. Les choix techniques restent révisables.
+- Ouvert : essais réels, contrôles en jeu, présentation et mesures de fluidité. Aucune attribution à une IA.
 
-Chaque personne clone le dépôt sur son PC. Chaque IA travaille dans cette copie et sur une branche dédiée. GitHub conserve le projet et les échanges ; il ne relie pas automatiquement les conversations des IA.
+### 2026-10-22 — Suivi documentaire simplifié
 
-1. Lire `AGENTS.md`, `docs/DECISIONS.md` et `docs/TASKS.md`.
-2. Indiquer le travail entrepris dans une issue GitHub pour rendre les changements visibles.
-3. Créer une branche `feat/nom-de-la-tache` ou `fix/nom-du-probleme`.
-4. Développer et vérifier le changement.
-5. Ouvrir une pull request et faire relire par l'autre personne.
-6. Fusionner, puis mettre à jour l'autre copie avant la tâche suivante.
-
-Chaque assistant est libre de contribuer dans le périmètre défini par les humains. Aucun assistant ne distribue les rôles à l'autre et aucun fichier n'est réservé à une IA. Les branches, les échanges et les revues servent à gérer les éventuels conflits et à comparer les propositions.
-
-Guide de mise en ligne : `docs/GITHUB-SETUP.md`.
+- Fait : un seul document général, suppression des anciens guides et consignes redondantes.
+- Vérifié : renvois documentaires et cohérence du contenu ; aucun code applicatif modifié.
+- Publication : branche `docs/shared-project-log`. Statut de fusion à actualiser après publication.
