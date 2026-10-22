@@ -2,6 +2,8 @@
 
 ## Besoin confirmé
 
+Mode de collaboration précisé par l'utilisateur : chaque assistant travaille de façon autonome dans le périmètre fixé par les humains. Aucun assistant n'attribue de rôle ou de chemin technique à l'autre. Les propositions techniques restent révisables.
+
 - Application installable sur PC.
 - Navigation jolie et simple à la manette, consoles de gauche à droite.
 - Sélection directe du jeu ; pas de passage dans la bibliothèque d'un émulateur.

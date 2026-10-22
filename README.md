@@ -53,12 +53,12 @@ Architecture et frontières de contribution : `docs/ARCHITECTURE.md`. État des 
 Chaque personne clone le dépôt sur son PC. Chaque IA travaille dans cette copie et sur une branche dédiée. GitHub conserve le projet et les échanges ; il ne relie pas automatiquement les conversations des IA.
 
 1. Lire `AGENTS.md`, `docs/DECISIONS.md` et `docs/TASKS.md`.
-2. Réserver une tâche dans une issue GitHub et indiquer les fichiers concernés.
+2. Indiquer le travail entrepris dans une issue GitHub pour rendre les changements visibles.
 3. Créer une branche `feat/nom-de-la-tache` ou `fix/nom-du-probleme`.
 4. Développer et vérifier le changement.
 5. Ouvrir une pull request et faire relire par l'autre personne.
 6. Fusionner, puis mettre à jour l'autre copie avant la tâche suivante.
 
-Éviter que les deux IA changent les mêmes fichiers simultanément. Toute modification des interfaces communes se décide dans l'issue avant implémentation.
+Chaque assistant est libre de contribuer dans le périmètre défini par les humains. Aucun assistant ne distribue les rôles à l'autre et aucun fichier n'est réservé à une IA. Les branches, les échanges et les revues servent à gérer les éventuels conflits et à comparer les propositions.
 
 Guide de mise en ligne : `docs/GITHUB-SETUP.md`.

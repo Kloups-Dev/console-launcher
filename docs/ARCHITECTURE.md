@@ -28,10 +28,10 @@ Le module ne force pas l'arrêt du processus et ne réécrit pas les fichiers de
 
 La bibliothèque et le chemin Dolphin sont enregistrés ensemble. Une sauvegarde écrit d'abord un fichier temporaire adjacent, puis remplace le fichier principal. Une bibliothèque illisible est conservée et les nouvelles écritures sont bloquées dans cette session. Les jeux restent à leur emplacement d'origine.
 
-## Répartition proposée avec Claude
+## Contributions autonomes
 
-Claude peut travailler sur la présentation dans `MainWindow.xaml` et les styles dans `App.xaml` sur sa branche. Préserver les noms `x:Name` et les événements existants. Signaler tout besoin de modifier le contrat ou `MainWindow.xaml.cs` avant de le faire.
+Cette architecture décrit le prototype actuel. Elle ne réserve aucun fichier ou domaine à un assistant et n'impose pas une direction aux autres contributeurs.
 
-Le cœur et la session Dolphin sont la première zone de travail côté Codex. Une prochaine tâche indépendante est le support des manettes en jeu, après discussion de la stratégie et des profils.
+Chaque assistant peut améliorer les parties qu'il juge utiles dans le périmètre défini par les humains, proposer une autre approche et modifier les contrats en documentant les conséquences.
 
-Chacun synchronise sa branche avec la proposition de socle avant de commencer. Ne pas développer une seconde application avec un contrat différent.
+Consulter les branches et propositions existantes permet d'éviter de perdre le travail d'autrui. Les changements restent vérifiables dans des branches et pull requests.

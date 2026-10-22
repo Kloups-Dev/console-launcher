@@ -1,12 +1,12 @@
 # Premières tâches
 
-Créer une issue GitHub par tâche. Réserver une tâche par commentaire avant de commencer et préciser les fichiers concernés.
+Pistes de travail sans attribution à une personne ou une IA. Chacun peut choisir les contributions utiles dans le périmètre défini par les humains et indiquer ce qu'il entreprend pour limiter les conflits.
 
 ## Travail démarré — branche feat/desktop-foundation
 
-Socle proposé par Codex : interface Windows WPF, bibliothèque JSON, navigation clavier/XInput, contrat d'adaptateur et lancement direct Dolphin. Voir docs/ARCHITECTURE.md et docs/VALIDATION.md. Ne pas recréer un second socle en parallèle ; relire cette proposition avant de partir de sa branche.
+Prototype existant : interface Windows WPF, bibliothèque JSON, navigation clavier/XInput, contrat d'adaptateur et lancement direct Dolphin. Voir docs/ARCHITECTURE.md et docs/VALIDATION.md. Il constitue une proposition révisable.
 
-Prochaine tâche proposée à Claude : améliorer la présentation de MainWindow.xaml et App.xaml, préserver les noms et événements existants, ne pas modifier le cœur ni le gestionnaire de session. Cette tâche doit commencer depuis le socle publié et être réalisée dans sa propre branche.
+Aucun fichier ni domaine n'est réservé à un assistant. Les pistes suivantes n'imposent pas d'ordre de réalisation.
 
 ## 1 — Définir la première version
 
@@ -18,7 +18,7 @@ Après choix de technologie : consoles horizontales, liste de jeux locale de dé
 
 ## 3 — Contrat d'adaptateur
 
-Décrire avec l'autre contributeur les données d'un jeu, les prérequis, la configuration et le cycle de session. Stabiliser le contrat avant les implémentations parallèles.
+Décrire les données d'un jeu, les prérequis, la configuration et le cycle de session. Documenter les changements de contrat et leurs conséquences pour les autres composants.
 
 ## 4 — Première session réelle
 
@@ -28,4 +28,4 @@ Après contrat : lancer directement un jeu fourni par le testeur, suivre sa ferm
 
 Même PC, émulateur, jeu, réglages et état du cache. Mesurer menu, lancement, retour et consommation pendant le jeu. Les seuils sont définis avant de conclure.
 
-Répartition suggérée après les tâches 1 et 3 : un binôme sur l'interface ; l'autre sur l'adaptateur. Les fichiers communs ont un responsable explicite par tâche.
+Les propositions peuvent être discutées et comparées sans hiérarchie entre les assistants.

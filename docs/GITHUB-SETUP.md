@@ -21,7 +21,7 @@ Pour un projet appartenant durablement aux deux personnes, une organisation GitH
 
 Ouvrir le dossier cloné dans l'application de chaque assistant. Message de départ :
 
-> Lis README.md, AGENTS.md, docs/DECISIONS.md et docs/TASKS.md. Consulte les tâches en cours avant de modifier les fichiers. Travaille sur une branche dédiée à la tâche qui t'est attribuée. Signale les décisions nécessaires et les vérifications réalisées.
+> Lis README.md, AGENTS.md, docs/DECISIONS.md et docs/TASKS.md. Contribue librement dans le périmètre défini par les humains, sur une branche dédiée. Consulte les travaux en cours pour repérer les conflits et documente tes choix et vérifications. Aucun assistant ne dirige l'autre et aucun fichier n'est réservé.
 
 Les assistants n'ont pas automatiquement accès à GitHub : connecter ou authentifier leurs outils selon l'application utilisée. Une copie locale du dépôt leur permet déjà de lire et modifier les fichiers.
 
