@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -18,6 +20,11 @@ public partial class WorkbenchWindow : Window
     private readonly Gamepad gamepad = new();
     private readonly DispatcherTimer sessionInput = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private bool rendering;
+    private static readonly HttpClient downloadClient = new() { Timeout = TimeSpan.FromMinutes(5) };
+    private readonly DolphinInstaller dolphinInstaller;
+    private DolphinInstallation? managedDolphin;
+    private CancellationTokenSource? installationCancellation;
+    private bool Installing => installationCancellation is not null;
     private string? previewPath;
     private SystemDefinition? SelectedSystem => SystemsList.SelectedItem as SystemDefinition;
     private GameEntry? SelectedGame => GamesGrid.SelectedItem as GameEntry;
@@ -32,6 +39,8 @@ public partial class WorkbenchWindow : Window
         index = Array.IndexOf(arguments, "--preview");
         if (index >= 0 && index + 1 < arguments.Length) previewPath = arguments[index + 1];
         backend = new LauncherBackend(new LibraryStore(Path.Combine(dataDirectory, "library.json")));
+        dolphinInstaller = new(downloadClient, dataDirectory);
+        managedDolphin = dolphinInstaller.Detect();
         backend.Changed += OnBackendChanged;
         SystemsList.ItemsSource = IntegrationCatalog.Systems;
         SystemsList.SelectedIndex = 0;
@@ -40,7 +49,7 @@ public partial class WorkbenchWindow : Window
             gamepad.Poll(false, backend.Status.Busy);
             if (gamepad.ReturnRequested) backend.RequestStop();
         };
-        Closing += (_, e) => { if (backend.Status.Busy) { e.Cancel = true; StatusText.Text = "Fermez la partie avant de quitter l'atelier."; } };
+        Closing += (_, e) => { if (backend.Status.Busy || Installing) { e.Cancel = true; StatusText.Text = "Terminez la partie ou annulez l'installation avant de quitter l'atelier."; } };
         Closed += (_, _) => { sessionInput.Stop(); backend.Changed -= OnBackendChanged; };
         Loaded += OnLoaded;
         RefreshState();
@@ -54,7 +63,7 @@ public partial class WorkbenchWindow : Window
 
     private void RefreshState()
     {
-        var busy = backend.Status.Busy;
+        var busy = backend.Status.Busy || Installing;
         var system = SelectedSystem;
         ImportButton.IsEnabled = !busy && backend.CanWrite && system?.Extensions.Length > 0;
         RemoveButton.IsEnabled = !busy && backend.CanWrite && SelectedGame is not null;
@@ -64,6 +73,18 @@ public partial class WorkbenchWindow : Window
         PrepareButton.IsEnabled = !busy && SelectedGame is not null;
         StartButton.IsEnabled = !busy && SelectedGame is not null && system?.Adapters.Length > 0;
         StopButton.IsEnabled = backend.Status.Phase is SessionPhase.Running or SessionPhase.StopRequested;
+        SystemsList.IsEnabled = !Installing;
+        DolphinInstallPanel.Visibility = system?.Id is "gamecube" or "wii" ? Visibility.Visible : Visibility.Collapsed;
+        InstallDolphinButton.IsEnabled = !busy && backend.CanWrite && RuntimeInformation.OSArchitecture == Architecture.X64;
+        InstallDolphinButton.Content = managedDolphin is null ? "Installer Dolphin " + DolphinPackage.Current.Version : "Utiliser Dolphin installé";
+        CancelInstallButton.IsEnabled = Installing;
+        if (!Installing) DolphinInstallText.Text = managedDolphin is null
+            ? "Dolphin n'est pas installé dans le lanceur. Téléchargement officiel et extraction automatique (Windows x64)."
+            : "Dolphin " + managedDolphin.Version + " installé et vérifié. Cliquez pour l'utiliser pour cette console.";
+        DolphinRuntimeText.Text = new[] { "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll" }
+            .All(name => File.Exists(Path.Combine(Environment.SystemDirectory, name)))
+            ? "Bibliothèques Visual C++ détectées. Leur compatibilité sera confirmée au démarrage de Dolphin."
+            : "Prérequis Microsoft Visual C++ manquant : installez la version x64 depuis le lien ci-dessous avant de jouer.";
         SessionPhaseText.Text = backend.Status.Phase switch
         {
             SessionPhase.Idle => "Disponible", SessionPhase.Preparing => "Préparation", SessionPhase.Running => "En partie",
@@ -121,26 +142,29 @@ public partial class WorkbenchWindow : Window
 
     private void Guard(Action action)
     {
-        try { action(); }
+        try { if (Installing) throw new InvalidOperationException("Attendez la fin de l'installation ou annulez-la."); action(); }
         catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or ArgumentException or System.ComponentModel.Win32Exception)
         { StatusText.Text = ex.Message; MessageBox.Show(this, ex.Message, "Action impossible", MessageBoxButton.OK, MessageBoxImage.Information); }
     }
     private void OnSaveConfiguration(object sender, RoutedEventArgs e) => Guard(() =>
     {
         if (SelectedSystem is not { } system || AdapterBox.SelectedItem is not string adapter) return;
-        backend.Configure(system.Id, new(adapter, ExecutableBox.Text.Trim().Trim('"'), CoreBox.Text.Trim().Trim('"')));
+        var executable = ExecutableBox.Text.Trim().Trim('"');
+        var userDirectory = managedDolphin is not null && string.Equals(executable, managedDolphin.Executable, StringComparison.OrdinalIgnoreCase)
+            ? managedDolphin.UserDirectory : null;
+        backend.Configure(system.Id, new(adapter, executable, CoreBox.Text.Trim().Trim('"'), userDirectory));
         PlanText.Text = "";
         PreparationText.Text = "Configuration enregistrée. Vérifiez la préparation du jeu.";
     });
     private void OnBrowseExecutable(object sender, RoutedEventArgs e)
     {
-        if (backend.Status.Busy) return;
+        if (backend.Status.Busy || Installing) return;
         var picker = new OpenFileDialog { Title = "Choisir l'exécutable installé", Filter = "Exécutable Windows|*.exe", CheckFileExists = true };
         if (picker.ShowDialog(this) == true) ExecutableBox.Text = picker.FileName;
     }
     private void OnBrowseCore(object sender, RoutedEventArgs e)
     {
-        if (backend.Status.Busy) return;
+        if (backend.Status.Busy || Installing) return;
         var picker = new OpenFileDialog { Title = "Choisir un cœur RetroArch adapté à la console", Filter = "Cœur Windows|*.dll", CheckFileExists = true };
         if (picker.ShowDialog(this) == true) CoreBox.Text = picker.FileName;
     }
@@ -173,7 +197,7 @@ public partial class WorkbenchWindow : Window
     private void OnPrepare(object sender, RoutedEventArgs e) => PrepareSelection();
     private async void OnStart(object sender, RoutedEventArgs e)
     {
-        if (backend.Status.Busy || SelectedGame is not { } game || PrepareSelection()?.CanLaunch != true) return;
+        if (backend.Status.Busy || Installing || SelectedGame is not { } game || PrepareSelection()?.CanLaunch != true) return;
         var previousState = WindowState;
         try
         {
@@ -196,6 +220,44 @@ public partial class WorkbenchWindow : Window
         }
     }
     private void OnStop(object sender, RoutedEventArgs e) => backend.RequestStop();
+    private async void OnInstallDolphin(object sender, RoutedEventArgs e)
+    {
+        if (backend.Status.Busy || Installing || !backend.CanWrite || SelectedSystem is not { } system) return;
+        if (RuntimeInformation.OSArchitecture != Architecture.X64) return;
+        installationCancellation = new();
+        RefreshState();
+        var progress = new Progress<InstallProgress>(p =>
+        {
+            DolphinInstallText.Text = p.Message;
+            DolphinProgress.IsIndeterminate = p.Percent is null;
+            if (p.Percent is { } percent) DolphinProgress.Value = percent;
+        });
+        string outcome;
+        try
+        {
+            managedDolphin = await dolphinInstaller.InstallAsync(progress, installationCancellation.Token);
+            backend.Configure(system.Id, new("dolphin", managedDolphin.Executable, UserDirectory: managedDolphin.UserDirectory));
+            AdapterBox.SelectedItem = "dolphin";
+            ExecutableBox.Text = managedDolphin.Executable;
+            outcome = "Dolphin prêt pour " + system.Name + ". Ajoutez votre jeu dans Bibliothèque et lancement.";
+        }
+        catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
+        { outcome = "Installation annulée. Vous pouvez réessayer."; }
+        catch (OperationCanceledException) { outcome = "Le téléchargement a dépassé le délai autorisé. Vérifiez la connexion puis réessayez."; }
+        catch (Exception ex) { outcome = "Installation impossible : " + ex.Message; }
+        finally
+        {
+            installationCancellation.Dispose();
+            installationCancellation = null;
+            DolphinProgress.IsIndeterminate = false;
+            RefreshState();
+        }
+        DolphinInstallText.Text = outcome;
+        StatusText.Text = outcome;
+    }
+    private void OnCancelInstall(object sender, RoutedEventArgs e) => installationCancellation?.Cancel();
+    private void OnDolphinPrerequisite(object sender, RoutedEventArgs e) => Guard(() =>
+        Process.Start(new ProcessStartInfo("https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist") { UseShellExecute = true }));
     private void OnExit(object sender, RoutedEventArgs e) => Close();
     private void OnOpenData(object sender, RoutedEventArgs e) => Guard(() =>
     {
