@@ -20,6 +20,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Managed emulator updates: auto / notify / off policy, pinned version, two versions kept, rollback; PCSX2 from its official GitHub releases.
 - `clctl` command-line tool: probe, add-roms, scan, plan, play, analyse, set-step, emulators, update, rollback.
 - Bilingual documentation in `docs/prototype/`, CI on Windows and Linux.
+- Downloadable test builds for Windows and Linux, produced by the CI on every push.
 
 **Known limitations**
 - Not yet tried with the real emulators or on Windows hardware.
@@ -40,6 +41,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Mises à jour des émulateurs gérés : politique auto / prévenir / désactivée, version épinglée, deux versions conservées, retour arrière ; PCSX2 depuis ses versions officielles sur GitHub.
 - Outil en ligne de commande `clctl` : probe, add-roms, scan, plan, play, analyse, set-step, emulators, update, rollback.
 - Documentation bilingue dans `docs/prototype/`, intégration continue sous Windows et Linux.
+- Versions de test téléchargeables pour Windows et Linux, compilées par l'intégration continue à chaque envoi.
 
 **Limites connues**
 - Pas encore essayé avec les vrais émulateurs ni sur une machine Windows.

@@ -40,3 +40,51 @@ jobs:
 
       - name: Command-line tool
         run: cargo run -p cl-cli -- --help
+
+  package:
+    name: package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: console-launcher-windows-x64
+            exe: .exe
+          - os: ubuntu-24.04
+            artifact: console-launcher-linux-x64
+            exe: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux libraries for the desktop app
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libudev-dev librsvg2-dev libssl-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      # `custom-protocol` embeds the interface in the executable (production mode).
+      - name: Build release binaries
+        run: |
+          cargo build --release -p console-launcher --features tauri/custom-protocol
+          cargo build --release -p cl-cli
+
+      - name: Collect files
+        shell: bash
+        run: |
+          mkdir dist
+          cp "target/release/console-launcher${{ matrix.exe }}" dist/
+          cp "target/release/clctl${{ matrix.exe }}" dist/
+          cp docs/prototype/config.example.toml CHANGELOG.md dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist

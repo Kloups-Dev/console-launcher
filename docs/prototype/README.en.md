@@ -20,6 +20,15 @@ An emulation launcher for Windows and Linux. Pick a console, pick a game, and it
 | Emulator updates: auto / notify / off, pinned version, rollback | ✅ For PCSX2 (GitHub). Dolphin and RetroArch: manual install for now |
 | Users' own settings are respected | ✅ Files of an emulator installed by the user are never modified |
 
+## Download a test build
+
+Every push to GitHub builds ready-to-run binaries. On the repository's **Actions** tab, open the latest **CI** run of the branch, then download the artifact at the bottom of the page (a GitHub account is required):
+
+- `console-launcher-windows-x64`: unzip, then run `console-launcher.exe`. WebView2 is required (already included in Windows 10 and 11).
+- `console-launcher-linux-x64`: unzip, make `console-launcher` executable, then run it. The WebKitGTK libraries listed in [DEPENDENCIES.en.md](DEPENDENCIES.en.md) are required.
+
+The `clctl` command-line tool is in the same archive.
+
 ## Quick start
 
 Requirements: stable [Rust](https://rustup.rs). On Linux, Tauri's system libraries are also needed (see [DEPENDENCIES.en.md](DEPENDENCIES.en.md)).

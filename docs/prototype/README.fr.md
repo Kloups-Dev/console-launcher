@@ -20,6 +20,15 @@ Lanceur d'émulation pour Windows et Linux. On choisit une console, puis un jeu,
 | Mises à jour des émulateurs : auto / prévenir / désactivées, version épinglée, retour arrière | ✅ Pour PCSX2 (GitHub). Dolphin et RetroArch : installation manuelle pour l'instant |
 | Respect des réglages de l'utilisateur | ✅ Les fichiers d'un émulateur installé par l'utilisateur ne sont jamais modifiés |
 
+## Télécharger une version de test
+
+Chaque envoi sur GitHub compile des exécutables prêts à l'emploi. Dans l'onglet **Actions** du dépôt, ouvrir la dernière exécution **CI** de la branche, puis télécharger l'artefact en bas de la page (un compte GitHub est nécessaire) :
+
+- `console-launcher-windows-x64` : décompresser, puis lancer `console-launcher.exe`. WebView2 est nécessaire (déjà présent dans Windows 10 et 11).
+- `console-launcher-linux-x64` : décompresser, rendre `console-launcher` exécutable, puis le lancer. Les bibliothèques WebKitGTK listées dans [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md) sont nécessaires.
+
+L'outil en ligne de commande `clctl` est dans la même archive.
+
 ## Démarrage rapide
 
 Prérequis : [Rust](https://rustup.rs) stable. Sous Linux, il faut aussi les bibliothèques de Tauri (voir [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md)).
