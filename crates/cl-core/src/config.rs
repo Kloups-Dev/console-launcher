@@ -15,7 +15,8 @@ pub enum ConfigError {
     #[error("invalid settings in {path}: {source}")]
     Parse {
         path: PathBuf,
-        source: toml::de::Error,
+        // Boxed: `toml::de::Error` is large and would bloat every `Result`.
+        source: Box<toml::de::Error>,
     },
     #[error("cannot serialise settings: {0}")]
     Serialize(#[from] toml::ser::Error),
@@ -125,7 +126,7 @@ impl AppConfig {
         match std::fs::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|source| ConfigError::Parse {
                 path: path.into(),
-                source,
+                source: Box::new(source),
             }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AppConfig::default()),
             Err(source) => Err(ConfigError::Io {

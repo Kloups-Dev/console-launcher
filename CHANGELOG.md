@@ -22,6 +22,9 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Bilingual documentation in `docs/prototype/`, CI on Windows and Linux.
 - Downloadable test builds for Windows and Linux, produced by the CI on every push.
 
+**Fixed**
+- Windows lint: the settings parse error is boxed, so `cargo clippy -D warnings` passes on Windows too.
+
 **Known limitations**
 - Not yet tried with the real emulators or on Windows hardware.
 - Estimation thresholds and smoothness criteria are initial values to calibrate.
@@ -42,6 +45,9 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Outil en ligne de commande `clctl` : probe, add-roms, scan, plan, play, analyse, set-step, emulators, update, rollback.
 - Documentation bilingue dans `docs/prototype/`, intégration continue sous Windows et Linux.
 - Versions de test téléchargeables pour Windows et Linux, compilées par l'intégration continue à chaque envoi.
+
+**Corrections**
+- Lint sous Windows : l'erreur de lecture des réglages est mise en boîte, `cargo clippy -D warnings` passe donc aussi sous Windows.
 
 **Limites connues**
 - Pas encore essayé avec les vrais émulateurs ni sur une machine Windows.
