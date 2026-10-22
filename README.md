@@ -54,4 +54,4 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 
 - Fait : un seul document général, suppression des anciens guides et consignes redondantes.
 - Vérifié : renvois documentaires et cohérence du contenu ; aucun code applicatif modifié.
-- Publication : branche `docs/shared-project-log`. Statut de fusion à actualiser après publication.
+- Publication : simplification fusionnée sur `main` par la PR n°3. Le prototype a été aligné dans `a2f635d` ; sa PR n°1 reste ouverte.
