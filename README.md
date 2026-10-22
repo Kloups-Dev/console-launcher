@@ -6,7 +6,38 @@ Parcours : **menu → console → jeu → partie → retour au menu**. Les bibli
 
 ## État actuel
 
-Base de collaboration et spécification initiale. Il n'y a pas encore d'application exécutable. Windows est la première cible proposée ; la technologie et la licence du projet restent à décider. Ne pas annoncer ce dépôt comme un logiciel open source sous licence tant que celle-ci n'est pas choisie.
+Premier prototype Windows proposé : menu natif C#/.NET 8 et WPF, navigation clavier/XInput, bibliothèque locale et lancement direct GameCube avec Dolphin déjà installé. La technologie reste à relire et la licence du projet reste à choisir. Ne pas annoncer ce dépôt comme un logiciel open source sous licence tant que celle-ci n'est pas choisie.
+
+## Essayer le prototype
+
+Prérequis de développement : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
+
+```powershell
+dotnet run --project src/Launcher.Desktop/Launcher.Desktop.csproj
+```
+
+- Flèches : choisir une console puis un jeu.
+- Entrée ou bouton A : choisir ; Échap ou bouton B : retour.
+- F11 : plein écran. Souris et tabulation également disponibles.
+- Réglages : sélectionner votre Dolphin.exe existant.
+- Ajouter un jeu : choisir votre fichier GameCube local, puis Jouer.
+- Fermer la partie dans Dolphin : retour au lanceur.
+
+Les jeux affichés avant importation sont des titres fictifs et ne se lancent pas. PS2 et SNES sont des aperçus visuels, sans adaptateur fonctionnel pour le moment. Les manettes prises en charge dans le menu sont les modèles exposés via XInput ; les réglages de contrôles en jeu restent ceux de Dolphin. Les réglages et l'ajout de fichiers nécessitent encore le clavier ou la souris.
+
+Bibliothèque du lanceur : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les fichiers de jeux ne sont ni déplacés ni copiés. Le contenu du jeu n'est pas identifié ou validé lors de l'import : Dolphin le vérifie au démarrage. Ce prototype ne télécharge ni émulateur, ni jeu, ni BIOS.
+
+## Vérifier et publier un dossier portable
+
+```powershell
+dotnet build src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release
+dotnet run --project tests/Launcher.Checks/Launcher.Checks.csproj --configuration Release
+dotnet publish src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release --self-contained false -o dist/windows
+```
+
+Le dossier publié nécessite le runtime .NET Desktop 8 sur le PC cible. Il ne constitue pas encore un installateur autonome.
+
+Architecture et frontières de contribution : `docs/ARCHITECTURE.md`. État des vérifications : `docs/VALIDATION.md`.
 
 ## Objectifs
 

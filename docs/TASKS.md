@@ -2,6 +2,12 @@
 
 Créer une issue GitHub par tâche. Réserver une tâche par commentaire avant de commencer et préciser les fichiers concernés.
 
+## Travail démarré — branche feat/desktop-foundation
+
+Socle proposé par Codex : interface Windows WPF, bibliothèque JSON, navigation clavier/XInput, contrat d'adaptateur et lancement direct Dolphin. Voir docs/ARCHITECTURE.md et docs/VALIDATION.md. Ne pas recréer un second socle en parallèle ; relire cette proposition avant de partir de sa branche.
+
+Prochaine tâche proposée à Claude : améliorer la présentation de MainWindow.xaml et App.xaml, préserver les noms et événements existants, ne pas modifier le cœur ni le gestionnaire de session. Cette tâche doit commencer depuis le socle publié et être réalisée dans sa propre branche.
+
 ## 1 — Définir la première version
 
 Résultat : OS initial, premier émulateur, matériel de test et critères d'acceptation décidés. Documenter les décisions sans élargir le périmètre.
