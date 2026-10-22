@@ -1,4 +1,4 @@
-# Console Launcher — prototype v0.1
+# Console Launcher — prototype v0.2
 
 *[Version française](README.fr.md)*
 
@@ -6,19 +6,22 @@ An emulation launcher for Windows and Linux. Pick a console, pick a game, and it
 
 > This branch is a **prototype for testing**. It does not replace anything on `main`.
 
-## What v0.1 does
+## What v0.2 does
 
 | Feature | Status |
 |---|---|
 | Interface driven by controller, keyboard or mouse | ✅ Tested on Linux (virtual display), not yet on Windows |
 | Two template themes ("Horizon", "Grid") and theme API | ✅ |
 | Library: `roms/<console>/` folders, covers, favourites, multi-disc games (.m3u) | ✅ |
-| 14 consoles recognised, 3 emulators integrated (RetroArch, Dolphin, PCSX2) | ✅ Generated commands are tested, **not yet tried with the real emulators** |
+| 15 consoles recognised, 8 emulators recognised (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu), any other emulator can be added | ✅ Generated commands and settings are tested, **not yet tried with the real emulators** |
+| Emulators found by themselves, including RetroBat's `emulators` folder; emulator chosen per console | ✅ |
+| Full settings screen, usable with a controller: consoles, emulators, folders, smoothness check | ✅ Tested on Linux (virtual display) |
 | Hardware detection (CPU, RAM, GPU through Vulkan) and a "simulation" CPU test | ✅ |
 | Estimated starting settings, then real measurement and automatic per-game adjustment | ✅ Logic tested; **thresholds still to calibrate** on real machines |
 | Real-condition measurement: MangoHud (Linux), PresentMon (Windows) | ⚠️ Integrated, not yet checked on a real game session |
 | Emulator updates: auto / notify / off, pinned version, rollback | ✅ For PCSX2 (GitHub). Dolphin and RetroArch: manual install for now |
-| Users' own settings are respected | ✅ Files of an emulator installed by the user are never modified |
+| Settings changed by hand in an emulator are left alone, with a button to give them back to the launcher | ✅ Original files backed up before the first change ([EMULATORS.en.md](EMULATORS.en.md)) |
+| System optimisations for every emulator (priority, high-performance GPU on Windows) | ✅ Not yet checked on Windows |
 
 ## Download a test build
 
@@ -83,7 +86,8 @@ crates/
   cl-core             Shared model, config.toml, non-destructive INI editor
   cl-hwprobe          Hardware detection + CPU test (simulation)
   cl-library          Game scan, covers, favourites
-  cl-adapters         One adapter per emulator (detection, settings, command)
+  cl-adapters         Emulator adapters and profiles (detection, settings, command)
+    profiles/         Bundled emulator profiles (mGBA, DuckStation, PPSSPP, melonDS, Cemu)
   cl-perf             Estimate, capture analysis, per-game adjustment
   cl-session          Launch, frame capture, wait for exit
   cl-updater          Managed installs: updates, pinning, rollback
@@ -91,7 +95,7 @@ crates/
   cl-cli              clctl
 ```
 
-The interface knows no emulator: it asks for consoles and games, then calls `play`. Adding an emulator only takes a new adapter in `cl-adapters`; themes do not change.
+The interface knows no emulator: it asks for consoles and games, then calls `play`. Adding an emulator takes a profile file (TOML) or, for special cases, an adapter in `cl-adapters`; themes do not change. See [EMULATORS.en.md](EMULATORS.en.md).
 
 ## What is not provided, and never will be
 
@@ -103,11 +107,11 @@ Still to be chosen. One important point: a licence that **forbids** commercial u
 
 ## Proposed next steps
 
-1. Tests on real Windows and Linux machines with the three emulators, then threshold calibration ([PERFORMANCE.en.md](PERFORMANCE.en.md)).
-2. Update sources for Dolphin and RetroArch, and installation of missing RetroArch cores.
-3. Full settings screen: emulator per console, manual quality choice, theme options.
-4. Automatic cover download (ScreenScraper, with the user's own account).
-5. More adapters: DuckStation, PPSSPP, melonDS, Cemu, RPCS3…
+1. Tests on real Windows and Linux machines with the real emulators, then threshold calibration ([PERFORMANCE.en.md](PERFORMANCE.en.md)).
+2. Settings tuning for melonDS (1.x format) and Cemu (graphic packs).
+3. Update sources for Dolphin and RetroArch, and installation of missing RetroArch cores.
+4. Manual quality choice per game and theme options in the settings screen.
+5. Automatic cover download (ScreenScraper, with the user's own account).
 6. Installers (NSIS for Windows, AppImage and .deb for Linux) with `cargo tauri build`.
 
-Other documents: [THEMES.en.md](THEMES.en.md) · [PERFORMANCE.en.md](PERFORMANCE.en.md) · [DEPENDENCIES.en.md](DEPENDENCIES.en.md) · [CHANGELOG](../../CHANGELOG.md)
+Other documents: [EMULATORS.en.md](EMULATORS.en.md) · [THEMES.en.md](THEMES.en.md) · [PERFORMANCE.en.md](PERFORMANCE.en.md) · [DEPENDENCIES.en.md](DEPENDENCIES.en.md) · [CHANGELOG](../../CHANGELOG.md)

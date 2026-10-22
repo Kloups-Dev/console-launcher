@@ -8,6 +8,10 @@
 # Dossiers de jeux, un sous-dossier par console
 rom_dirs = ["D:/Jeux", "E:/Retro"]
 
+# Folders searched for emulators (RetroBat's is found by itself next to "roms")
+# Dossiers où chercher les émulateurs (celui de RetroBat est trouvé seul, à côté de « roms »)
+emulator_dirs = ["D:/Emulateurs"]
+
 # BIOS / firmware dumped from your own consoles
 # BIOS / firmwares extraits de vos propres consoles
 bios_dir = "D:/Jeux/bios"
@@ -17,17 +21,22 @@ language = "fr"
 
 [perf]
 auto_tune = true              # automatic optimisation / optimisation automatique
+system_tweaks = true          # priority, high-performance GPU / priorité, GPU hautes performances
 capture_seconds = 60          # measurement length / durée de la mesure
 capture_delay_seconds = 20    # skip loading screens / ignorer les chargements
 # presentmon_path = "C:/Tools/PresentMon.exe"   # Windows only / Windows uniquement
 
-# Which emulator for which console (defaults shown in the docs)
-# Quel émulateur pour quelle console
+# Which emulator for which console (none: first installed, see EMULATORS docs)
+# Quel émulateur pour quelle console (aucun : le premier installé, voir la doc EMULATORS)
 [system_emulator]
 # psx = "retroarch"
 
-# External install: the launcher never edits its files
-# Installation externe : le lanceur ne modifie jamais ses fichiers
+# Emulator installed by the user. RetroArch and Dolphin get session overrides;
+# PCSX2, DuckStation and PPSSPP get their managed keys edited (backup kept).
+# Settings changed by hand in the emulator are left alone.
+# Émulateur installé par l'utilisateur. RetroArch et Dolphin : surcharges de session ;
+# PCSX2, DuckStation et PPSSPP : clés gérées modifiées (sauvegarde gardée).
+# Les réglages modifiés à la main dans l'émulateur ne sont plus touchés.
 [emulators.retroarch]
 mode = "external"
 path = "C:/RetroArch-Win64/retroarch.exe"
@@ -43,3 +52,10 @@ mode = "managed"
 updates = "auto"              # auto | notify | off
 # pinned = "2.2.0"            # keep this version / garder cette version
 locked_keys = []              # e.g. ["EmuCore/GS/upscale_multiplier"]
+
+# Any other emulator / N'importe quel autre émulateur
+[custom_emulators.custom-myemu]
+name = "My Emu"
+path = "D:/Emulateurs/MyEmu/MyEmu.exe"
+args = ["--fullscreen", "{rom}"]   # {rom} = the game / le jeu
+systems = ["snes"]

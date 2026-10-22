@@ -270,7 +270,7 @@ fn run() -> Result<()> {
             println!("{}: rung {} fixed by the user", game.title, t.state.current);
         }
         Cmd::Emulators => {
-            for a in cl_adapters::registry() {
+            for a in engine.adapters() {
                 let (_, cfg, exe) = engine.find_emulator(a.id())?;
                 let m = ManagedEmulator::new(&engine.paths.emulators_dir(), a.id());
                 let st = m.state();
@@ -331,8 +331,11 @@ fn run() -> Result<()> {
                     rel.size / 1_048_576
                 );
                 let file = sources::download(&rel, &m.root.join("downloads"))?;
-                let adapter = cl_adapters::by_id(&id).ok_or_else(|| anyhow!("unknown emulator"))?;
-                m.install_archive(version, &file, adapter.exe_names()[0])?;
+                let adapter = engine
+                    .adapter(&id)
+                    .ok_or_else(|| anyhow!("unknown emulator"))?;
+                let exe_name = adapter.exe_names().into_iter().next().unwrap_or_default();
+                m.install_archive(version, &file, &exe_name)?;
                 let _ = std::fs::remove_file(file);
                 println!("Installed and active: {version}. Previous version kept for rollback.");
                 if cfg.mode != cl_core::config::EmulatorMode::Managed {

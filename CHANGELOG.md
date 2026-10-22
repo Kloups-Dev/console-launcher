@@ -4,6 +4,58 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [0.2.0] — 2026-10-22 — Settings and emulators
+
+### English
+
+**Added**
+- Full settings screen, usable with a controller: emulator per console (automatic or chosen), emulators (executable, detection, opening the emulator to set it up), game and emulator folders, smoothness check tool, system optimisations, message language.
+- Emulators recognised: mGBA, DuckStation, PPSSPP, melonDS and Cemu, in addition to RetroArch, Dolphin and PCSX2. New console: Wii U.
+- Custom emulators: any executable, with its consoles and arguments.
+- Emulator profiles (TOML) in the data folder, to teach the launcher a new emulator; the new emulators are bundled as profiles.
+- Emulator folders: RetroBat's `emulators` folder is searched automatically, and any folder can be added.
+- Settings changed by hand inside an emulator are detected and left alone; a button gives them back to the automatic optimisation.
+- System optimisations for every emulator: higher process priority and, on Windows machines with two GPUs, the high-performance GPU.
+- Native file and folder picker.
+- Messages in French or English.
+- Guide [EMULATORS.en.md](docs/prototype/EMULATORS.en.md).
+
+**Changed**
+- The automatic choice per console takes the first installed emulator in order of preference (for example GBA: mGBA, then RetroArch).
+- PCSX2 installed by the user is now optimised too: only the managed keys of `PCSX2.ini` change, and the original file is backed up once.
+- The game screen no longer writes any file: settings are applied only when a game starts.
+- Built-in themes are updated with the launcher; files edited by the user are kept.
+- Pressing A on a game whose emulator is missing opens its settings page.
+
+**Fixed**
+- Game scan: emulator, BIOS and save folders are skipped, and loose files are only read directly in a game folder (a RetroBat `emulators` folder used to add hundreds of false PlayStation 2 games).
+- Emulator executables or folders added as game folders are moved to the right place at start-up.
+
+### Français
+
+**Ajouts**
+- Écran de réglages complet, utilisable à la manette : émulateur par console (automatique ou choisi), émulateurs (exécutable, détection, ouverture de l'émulateur pour le configurer), dossiers de jeux et d'émulateurs, outil de mesure de fluidité, optimisations système, langue des messages.
+- Émulateurs reconnus : mGBA, DuckStation, PPSSPP, melonDS et Cemu, en plus de RetroArch, Dolphin et PCSX2. Nouvelle console : Wii U.
+- Émulateurs personnalisés : n'importe quel exécutable, avec ses consoles et ses arguments.
+- Profils d'émulateurs (TOML) dans le dossier de données, pour apprendre un nouvel émulateur au lanceur ; les nouveaux émulateurs sont fournis sous forme de profils.
+- Dossiers d'émulateurs : le dossier `emulators` de RetroBat est cherché automatiquement, et n'importe quel dossier peut être ajouté.
+- Les réglages modifiés à la main dans un émulateur sont repérés et laissés tels quels ; un bouton les rend à l'optimisation automatique.
+- Optimisations système pour tous les émulateurs : priorité plus élevée et, sous Windows avec deux GPU, le GPU hautes performances.
+- Sélecteur natif de fichiers et de dossiers.
+- Messages en français ou en anglais.
+- Guide [EMULATORS.fr.md](docs/prototype/EMULATORS.fr.md).
+
+**Modifications**
+- Le choix automatique par console prend le premier émulateur installé dans l'ordre de préférence (par exemple GBA : mGBA, puis RetroArch).
+- PCSX2 installé par l'utilisateur est maintenant optimisé aussi : seules les clés gérées de `PCSX2.ini` changent, et le fichier d'origine est sauvegardé une fois.
+- La fiche d'un jeu n'écrit plus aucun fichier : les réglages ne s'appliquent qu'au lancement d'une partie.
+- Les thèmes intégrés sont mis à jour avec le lanceur ; les fichiers modifiés par l'utilisateur sont conservés.
+- Appuyer sur A sur un jeu dont l'émulateur manque ouvre sa page de réglages.
+
+**Corrections**
+- Scan des jeux : les dossiers d'émulateurs, de BIOS et de sauvegardes sont ignorés, et les fichiers isolés ne sont lus que directement dans un dossier de jeux (un dossier `emulators` de RetroBat ajoutait des centaines de faux jeux PlayStation 2).
+- Les exécutables ou dossiers d'émulateurs ajoutés comme dossiers de jeux sont remis à la bonne place au démarrage.
+
 ## [0.1.0] — 2026-10-22 — Prototype
 
 ### English

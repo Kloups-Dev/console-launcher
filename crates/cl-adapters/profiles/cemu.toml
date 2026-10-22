@@ -1,0 +1,17 @@
+# Cemu — Wii U.
+# Recognised and launched directly. Resolution is set per game through
+# graphic packs, which the launcher does not manage yet: only the
+# system-level optimisations and the smoothness check apply.
+id = "cemu"
+name = "Cemu"
+license = "MPL-2.0"
+homepage = "https://cemu.info"
+systems = ["wiiu"]
+args = ["-f", "-g", "{rom}"]
+
+[exe]
+windows = ["Cemu.exe"]
+linux = ["cemu", "Cemu"]
+
+[paths]
+linux = ["/usr/bin/cemu"]

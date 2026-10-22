@@ -69,7 +69,7 @@ Toutes les fonctions asynchrones renvoient une promesse.
 | `onSession(cb)` | `{state: "started"}` au lancement d'un jeu, puis `{state: "ended", report}` ou `{state: "failed", error}` |
 | `onPad(cb)` | Manette branchée ou débranchée : `{name, connected}` |
 | `getLibrary()` | `{systems, games}` (détail ci-dessous) |
-| `gameInfo(id)` | `{ready, emulator, stepLabel, ladder, settled, measure, belowRequirements, notes}` ou `{ready: false, error}` |
+| `gameInfo(id)` | `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` ou `{ready: false, code, emulatorId, error}` (`code` : `emulator_missing`, `no_emulator`…) |
 | `play(id)` | Lance le jeu. La promesse se termine quand l'émulateur se ferme, avec le rapport (fluidité mesurée, réglage suivant) |
 | `toggleFavorite(id)` | Renvoie le nouvel état |
 | `setQuality(id, palier)` | Fixe un palier à la main. L'optimisation automatique s'arrête pour ce jeu |
@@ -78,7 +78,7 @@ Toutes les fonctions asynchrones renvoient une promesse.
 | `listThemes()` / `setTheme(id)` | Changer de thème (la page se recharge) |
 | `option(id)` / `setOption(id, valeur)` | Options du manifeste |
 | `asset("img/fond.png")` | URL d'un fichier du dossier du thème |
-| `openSettings()` | Ouvre le panneau de réglages intégré, ce qui évite de devoir en coder un |
+| `openSettings(cible?)` | Ouvre le panneau de réglages intégré, ce qui évite de devoir en coder un. `cible` : `{emulator: id}` ouvre la page d'un émulateur, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` une page |
 | `toggleFullscreen()`, `quit()` | — |
 | `escapeHtml(texte)` | À utiliser pour insérer des titres de jeux dans du HTML |
 

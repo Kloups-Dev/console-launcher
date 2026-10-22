@@ -1,16 +1,41 @@
 //! PCSX2 (GPL-3.0-or-later) for PlayStation 2.
 //!
-//! PCSX2 has no generic command-line setting override, so profiles are
-//! applied only to **managed** installs, which run in portable mode
-//! (`portable.txt` next to the executable, settings in `inis/PCSX2.ini`).
-//! The INI is edited with the ownership rule: values the user changed by
-//! hand are kept. External installs are launched with their own settings.
+//! PCSX2 has no generic command-line setting override, so the profile is
+//! written into its `PCSX2.ini` with the ownership rule ([`crate::edit_ini`]):
+//! only the managed keys change, the original file is backed up once, and
+//! values the user changed by hand are kept.
+//! - Managed installs run in portable mode (`portable.txt` next to the
+//!   executable, settings in `inis/PCSX2.ini`).
+//! - Installs made by the user keep their own location (portable folder, or
+//!   the per-user folder).
 
-use crate::{exe_stem, step, AdapterError, EmulatorAdapter, LaunchContext, LaunchPlan};
+use crate::{
+    edit_ini, exe_stem, read_ini_values, step, AdapterError, EmulatorAdapter, LaunchContext,
+    LaunchPlan,
+};
 use cl_core::config::EmulatorMode;
-use cl_core::ini::{apply_owned, IniDoc, Ledger};
 use cl_core::{GraphicsApi, QualityStep, SystemId};
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+const RENDERER_KEY: &str = "EmuCore/GS/Renderer";
+
+/// `PCSX2.ini` of this install, if PCSX2 has already created it.
+fn ini_path(exe: &Path, mode: EmulatorMode) -> Option<PathBuf> {
+    let root = exe.parent()?;
+    let portable = root.join("portable.txt").exists() || root.join("portable.ini").exists();
+    if mode == EmulatorMode::Managed || portable {
+        let p = root.join("inis").join("PCSX2.ini");
+        return p.is_file().then_some(p);
+    }
+    [
+        "{documents}/PCSX2/inis/PCSX2.ini",
+        "{config}/PCSX2/inis/PCSX2.ini",
+    ]
+    .iter()
+    .filter_map(|t| cl_core::paths::expand(t, None))
+    .find(|p| p.is_file())
+}
 
 pub struct Pcsx2;
 
@@ -25,19 +50,19 @@ fn renderer(api: GraphicsApi) -> &'static str {
 }
 
 impl EmulatorAdapter for Pcsx2 {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "pcsx2"
     }
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "PCSX2"
     }
-    fn license(&self) -> &'static str {
+    fn license(&self) -> &str {
         "GPL-3.0-or-later"
     }
-    fn homepage(&self) -> &'static str {
+    fn homepage(&self) -> &str {
         "https://pcsx2.net"
     }
-    fn systems(&self) -> &'static [SystemId] {
+    fn systems(&self) -> &[SystemId] {
         &[SystemId::Ps2]
     }
     fn apis(&self) -> Vec<GraphicsApi> {
@@ -52,12 +77,13 @@ impl EmulatorAdapter for Pcsx2 {
             vec![GraphicsApi::Vulkan, GraphicsApi::OpenGl]
         }
     }
-    fn exe_names(&self) -> &'static [&'static str] {
-        if cfg!(windows) {
-            &["pcsx2-qt.exe"]
+    fn exe_names(&self) -> Vec<String> {
+        let names: &[&str] = if cfg!(windows) {
+            &["pcsx2-qt.exe", "pcsx2-qtx64-avx2.exe", "pcsx2-qtx64.exe"]
         } else {
-            &["pcsx2-qt"]
-        }
+            &["pcsx2-qt", "PCSX2.AppImage"]
+        };
+        names.iter().map(|s| s.to_string()).collect()
     }
     fn common_paths(&self) -> Vec<PathBuf> {
         if cfg!(windows) {
@@ -81,6 +107,21 @@ impl EmulatorAdapter for Pcsx2 {
         .collect()
     }
 
+    fn managed_keys(&self, system: SystemId) -> Vec<String> {
+        let mut keys = crate::ladder_keys(&self.quality_ladder(system));
+        keys.push(RENDERER_KEY.into());
+        keys
+    }
+
+    fn current_values(
+        &self,
+        exe: &Path,
+        mode: EmulatorMode,
+        _generated_dir: &Path,
+    ) -> Option<BTreeMap<String, String>> {
+        read_ini_values(&ini_path(exe, mode)?, &self.managed_keys(SystemId::Ps2))
+    }
+
     fn prepare(&self, ctx: &LaunchContext) -> Result<LaunchPlan, AdapterError> {
         let mut plan = LaunchPlan {
             program: ctx.exe.to_path_buf(),
@@ -97,38 +138,19 @@ impl EmulatorAdapter for Pcsx2 {
             if !portable.exists() {
                 std::fs::write(&portable, b"")?;
             }
-            let ini_path = root.join("inis").join("PCSX2.ini");
-            if ini_path.is_file() {
-                let ledger_path = ctx.generated_dir.join("pcsx2-ledger.json");
-                let mut ledger: Ledger = std::fs::read_to_string(&ledger_path)
-                    .ok()
-                    .and_then(|t| serde_json::from_str(&t).ok())
-                    .unwrap_or_default();
+        }
+        match ini_path(ctx.exe, ctx.mode) {
+            Some(ini) => {
                 let mut changes = ctx.step.settings.clone();
-                changes.insert("EmuCore/GS/Renderer".into(), renderer(ctx.api).into());
-                let mut doc = IniDoc::parse(&std::fs::read_to_string(&ini_path)?);
+                changes.insert(RENDERER_KEY.into(), renderer(ctx.api).into());
                 plan.settings_report =
-                    apply_owned(&mut doc, &changes, &mut ledger, ctx.locked_keys);
-                if !plan.settings_report.applied.is_empty() {
-                    std::fs::write(&ini_path, doc.render())?;
-                }
-                std::fs::create_dir_all(ctx.generated_dir)?;
-                std::fs::write(
-                    &ledger_path,
-                    serde_json::to_string_pretty(&ledger).unwrap_or_default(),
-                )?;
-            } else {
-                plan.notes.push(
-                    "PCSX2 has not been set up yet: start it once from the settings screen to choose your BIOS. \
-                     The optimised profile applies from the next launch."
-                        .into(),
-                );
+                    edit_ini(&ini, self.id(), &changes, ctx.locked_keys, ctx.generated_dir)?;
             }
-        } else {
-            plan.notes.push(
-                "PCSX2 installed by the user: its own settings are used. Switch it to 'managed' to let the launcher optimise it."
+            None => plan.notes.push(
+                "PCSX2 has not been set up yet: open it once from the launcher settings to choose your BIOS. \
+                 The optimised settings apply from the next launch."
                     .into(),
-            );
+            ),
         }
 
         plan.args = vec![
@@ -199,11 +221,18 @@ mod tests {
     }
 
     #[test]
-    fn external_install_is_not_modified() {
+    fn external_portable_install_is_optimised_with_backup() {
         let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("pcsx2");
+        std::fs::create_dir_all(root.join("inis")).unwrap();
+        std::fs::write(root.join("portable.txt"), b"").unwrap();
+        let exe = root.join("pcsx2-qt.exe");
+        std::fs::write(&exe, b"").unwrap();
+        let ini = root.join("inis/PCSX2.ini");
+        std::fs::write(&ini, "[EmuCore/GS]\nupscale_multiplier = 1\n").unwrap();
         let g = game(SystemId::Ps2, "/g/ps2/a.iso");
         let ladder = Pcsx2.quality_ladder(SystemId::Ps2);
-        let exe = dir.path().join("pcsx2-qt");
+        let gen = dir.path().join("gen");
         let plan = Pcsx2
             .prepare(&LaunchContext {
                 exe: &exe,
@@ -211,13 +240,19 @@ mod tests {
                 step: &ladder[1],
                 api: GraphicsApi::Vulkan,
                 mode: EmulatorMode::External,
-                generated_dir: dir.path(),
+                generated_dir: &gen,
                 locked_keys: &[],
                 bios_dir: None,
             })
             .unwrap();
-        assert!(!dir.path().join("portable.txt").exists());
-        assert!(plan.settings_report.applied.is_empty());
-        assert_eq!(plan.notes.len(), 1);
+        assert!(plan.notes.is_empty());
+        assert!(std::fs::read_to_string(&ini)
+            .unwrap()
+            .contains("upscale_multiplier = 2"));
+        assert!(gen.join("backups/pcsx2/PCSX2.ini.orig").is_file());
+        let v = Pcsx2
+            .current_values(&exe, EmulatorMode::External, &gen)
+            .unwrap();
+        assert_eq!(v["EmuCore/GS/upscale_multiplier"], "2");
     }
 }

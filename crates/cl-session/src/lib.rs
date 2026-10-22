@@ -44,6 +44,58 @@ pub struct SessionResult {
     pub capture_file: Option<PathBuf>,
     /// Why no capture was produced, when one was requested.
     pub capture_note: Option<String>,
+    /// System-level optimisations actually applied.
+    pub tweaks_applied: Vec<String>,
+}
+
+/// Windows process creation flags.
+#[cfg(windows)]
+const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Sets the Windows "high performance" GPU preference for an executable,
+/// unless a preference already exists (chosen by the user in the Windows
+/// graphics settings, or by an earlier launch). Returns what was done.
+#[cfg(windows)]
+fn prefer_discrete_gpu(exe: &Path) -> Result<&'static str, String> {
+    use std::os::windows::process::CommandExt;
+    const KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences";
+    let exe = exe.display().to_string();
+    let exists = Command::new("reg")
+        .args(["query", KEY, "/v", &exe])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if exists {
+        return Ok("GPU preference already set for this emulator: kept");
+    }
+    let ok = Command::new("reg")
+        .args([
+            "add",
+            KEY,
+            "/v",
+            &exe,
+            "/t",
+            "REG_SZ",
+            "/d",
+            "GpuPreference=2;",
+            "/f",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok {
+        Ok("high-performance GPU selected for this emulator")
+    } else {
+        Err("could not set the GPU preference".into())
+    }
 }
 
 fn which(name: &str) -> Option<PathBuf> {
@@ -175,6 +227,20 @@ pub fn run(
 
     let (mut cmd, note) = build_command(plan, capture);
     result.capture_note = result.capture_note.or(note);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        if plan.tweaks.high_priority {
+            cmd.creation_flags(ABOVE_NORMAL_PRIORITY_CLASS);
+            result.tweaks_applied.push("higher process priority".into());
+        }
+        if plan.tweaks.prefer_discrete_gpu {
+            match prefer_discrete_gpu(&plan.program) {
+                Ok(m) => result.tweaks_applied.push(m.into()),
+                Err(e) => log::warn!("{e}"),
+            }
+        }
+    }
     log::info!("launch: {:?}", cmd);
     let mut child = cmd.spawn().map_err(|source| SessionError::Spawn {
         program: plan.program.display().to_string(),

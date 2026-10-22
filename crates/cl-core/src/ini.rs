@@ -42,23 +42,29 @@ impl IniDoc {
         }
     }
 
-    /// Returns `(section_start, section_end)` line indexes; `start` is the header line.
+    /// Returns `(first_line, end)` of a section's body, header excluded.
+    /// The empty section name stands for the keys before the first header.
     fn section_range(&self, section: &str) -> Option<(usize, usize)> {
-        let start = self
+        let next_header = |from: usize| {
+            self.lines[from..]
+                .iter()
+                .position(|l| section_name(l).is_some())
+                .map(|p| from + p)
+                .unwrap_or(self.lines.len())
+        };
+        if section.is_empty() {
+            return Some((0, next_header(0)));
+        }
+        let header = self
             .lines
             .iter()
             .position(|l| section_name(l).is_some_and(|s| eq_ci(s, section)))?;
-        let end = self.lines[start + 1..]
-            .iter()
-            .position(|l| section_name(l).is_some())
-            .map(|p| start + 1 + p)
-            .unwrap_or(self.lines.len());
-        Some((start, end))
+        Some((header + 1, next_header(header + 1)))
     }
 
     fn find_key(&self, section: &str, key: &str) -> Option<usize> {
         let (start, end) = self.section_range(section)?;
-        (start + 1..end).find(|&i| split_kv(&self.lines[i]).is_some_and(|(k, _)| eq_ci(k, key)))
+        (start..end).find(|&i| split_kv(&self.lines[i]).is_some_and(|(k, _)| eq_ci(k, key)))
     }
 
     pub fn get(&self, section: &str, key: &str) -> Option<String> {
@@ -81,10 +87,10 @@ impl IniDoc {
             return;
         }
         match self.section_range(section) {
-            Some((_, end)) => {
+            Some((start, end)) => {
                 // Insert after the last non-blank line of the section.
                 let mut at = end;
-                while at > 0 && self.lines[at - 1].trim().is_empty() {
+                while at > start && self.lines[at - 1].trim().is_empty() {
                     at -= 1;
                 }
                 self.lines.insert(at, format!("{key} = {value}"));
@@ -122,7 +128,7 @@ pub struct ApplyReport {
 
 /// Applies `changes` (`Section/Key` → value) to `doc` following the ownership rule.
 /// The key is the part after the last `/`, so sections may contain `/`
-/// (PCSX2 uses `[EmuCore/GS]`).
+/// (PCSX2 uses `[EmuCore/GS]`). A key without `/` belongs before the first section.
 pub fn apply_owned(
     doc: &mut IniDoc,
     changes: &BTreeMap<String, String>,
@@ -131,9 +137,7 @@ pub fn apply_owned(
 ) -> ApplyReport {
     let mut report = ApplyReport::default();
     for (full_key, value) in changes {
-        let Some((section, key)) = full_key.rsplit_once('/') else {
-            continue;
-        };
+        let (section, key) = full_key.rsplit_once('/').unwrap_or(("", full_key));
         if locked_keys.iter().any(|k| eq_ci(k, full_key)) {
             report.kept_user_value.push(full_key.clone());
             continue;
@@ -214,6 +218,16 @@ mod tests {
             doc.get("Settings", "InternalResolution").as_deref(),
             Some("4")
         );
+    }
+
+    #[test]
+    fn keys_before_the_first_section() {
+        let mut doc = IniDoc::parse("Scale = 1\n\n[Other]\nA = 1\n");
+        assert_eq!(doc.get("", "Scale").as_deref(), Some("1"));
+        assert_eq!(doc.get("", "A"), None);
+        doc.set("", "Scale", "3");
+        doc.set("", "Renderer", "1");
+        assert_eq!(doc.render(), "Scale = 3\nRenderer = 1\n\n[Other]\nA = 1\n");
     }
 
     #[test]

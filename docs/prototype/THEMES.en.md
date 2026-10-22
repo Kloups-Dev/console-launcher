@@ -69,7 +69,7 @@ Every asynchronous function returns a promise.
 | `onSession(cb)` | `{state: "started"}` when a game starts, then `{state: "ended", report}` or `{state: "failed", error}` |
 | `onPad(cb)` | Controller connected or disconnected: `{name, connected}` |
 | `getLibrary()` | `{systems, games}` (details below) |
-| `gameInfo(id)` | `{ready, emulator, stepLabel, ladder, settled, measure, belowRequirements, notes}` or `{ready: false, error}` |
+| `gameInfo(id)` | `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` or `{ready: false, code, emulatorId, error}` (`code`: `emulator_missing`, `no_emulator`…) |
 | `play(id)` | Starts the game. The promise resolves when the emulator closes, with the report (measured smoothness, next setting) |
 | `toggleFavorite(id)` | Returns the new state |
 | `setQuality(id, step)` | Fixes a rung by hand. Automatic optimisation stops for that game |
@@ -78,7 +78,7 @@ Every asynchronous function returns a promise.
 | `listThemes()` / `setTheme(id)` | Switch theme (the page reloads) |
 | `option(id)` / `setOption(id, value)` | Manifest options |
 | `asset("img/bg.png")` | URL of a file in the theme folder |
-| `openSettings()` | Opens the built-in settings panel, so a theme does not have to code one |
+| `openSettings(target?)` | Opens the built-in settings panel, so a theme does not have to code one. `target`: `{emulator: id}` opens an emulator's page, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` a page |
 | `toggleFullscreen()`, `quit()` | — |
 | `escapeHtml(text)` | Use it to put game titles into HTML |
 

@@ -1,4 +1,4 @@
-# Console Launcher — prototype v0.1
+# Console Launcher — prototype v0.2
 
 *[English version](README.en.md)*
 
@@ -6,19 +6,22 @@ Lanceur d'émulation pour Windows et Linux. On choisit une console, puis un jeu,
 
 > Cette branche est un **prototype à tester**. Elle ne remplace rien sur `main`.
 
-## Ce que fait la v0.1
+## Ce que fait la v0.2
 
 | Fonction | État |
 |---|---|
 | Interface pilotable à la manette, au clavier et à la souris | ✅ Testée sous Linux (écran virtuel), pas encore sous Windows |
 | Deux thèmes modèles (« Horizon », « Grid ») et API de thème | ✅ |
 | Bibliothèque : dossiers `roms/<console>/`, jaquettes, favoris, jeux multi-disques (.m3u) | ✅ |
-| 14 consoles reconnues, 3 émulateurs intégrés (RetroArch, Dolphin, PCSX2) | ✅ Commandes générées et testées, **pas encore essayées avec les vrais émulateurs** |
+| 15 consoles reconnues, 8 émulateurs reconnus (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu), n'importe quel autre émulateur peut être ajouté | ✅ Commandes et réglages générés et testés, **pas encore essayés avec les vrais émulateurs** |
+| Émulateurs trouvés tout seuls, y compris dans le dossier `emulators` de RetroBat ; émulateur choisi par console | ✅ |
+| Écran de réglages complet, utilisable à la manette : consoles, émulateurs, dossiers, mesure de fluidité | ✅ Testé sous Linux (écran virtuel) |
 | Détection de la machine (CPU, RAM, GPU via Vulkan) et test CPU « simulation » | ✅ |
 | Réglage de départ estimé, puis mesure réelle et ajustement automatique par jeu | ✅ Logique testée ; **seuils à calibrer** sur de vraies machines |
 | Mesure en conditions réelles : MangoHud (Linux), PresentMon (Windows) | ⚠️ Intégré, pas encore vérifié sur une vraie partie |
 | Mises à jour des émulateurs : auto / prévenir / désactivées, version épinglée, retour arrière | ✅ Pour PCSX2 (GitHub). Dolphin et RetroArch : installation manuelle pour l'instant |
-| Respect des réglages de l'utilisateur | ✅ Les fichiers d'un émulateur installé par l'utilisateur ne sont jamais modifiés |
+| Les réglages modifiés à la main dans un émulateur ne sont plus touchés, avec un bouton pour les rendre au lanceur | ✅ Fichiers d'origine sauvegardés avant la première modification ([EMULATORS.fr.md](EMULATORS.fr.md)) |
+| Optimisations système pour tous les émulateurs (priorité, GPU hautes performances sous Windows) | ✅ Pas encore vérifiées sous Windows |
 
 ## Télécharger une version de test
 
@@ -83,7 +86,8 @@ crates/
   cl-core             Modèle commun, config.toml, éditeur INI non destructif
   cl-hwprobe          Détection matériel + test CPU (simulation)
   cl-library          Scan des jeux, jaquettes, favoris
-  cl-adapters         Un adaptateur par émulateur (détection, réglages, commande)
+  cl-adapters         Adaptateurs et profils d'émulateurs (détection, réglages, commande)
+    profiles/         Profils fournis (mGBA, DuckStation, PPSSPP, melonDS, Cemu)
   cl-perf             Estimation, analyse des captures, ajustement par jeu
   cl-session          Lancement, capture des images, attente de fermeture
   cl-updater          Installations gérées : mises à jour, épinglage, retour arrière
@@ -91,7 +95,7 @@ crates/
   cl-cli              clctl
 ```
 
-L'interface ne connaît aucun émulateur : elle demande des consoles et des jeux, puis appelle `play`. Pour ajouter un émulateur, il suffit d'écrire un nouvel adaptateur dans `cl-adapters`, sans toucher aux thèmes.
+L'interface ne connaît aucun émulateur : elle demande des consoles et des jeux, puis appelle `play`. Pour ajouter un émulateur, il suffit d'un fichier de profil (TOML) ou, pour les cas particuliers, d'un adaptateur dans `cl-adapters`, sans toucher aux thèmes. Voir [EMULATORS.fr.md](EMULATORS.fr.md).
 
 ## Ce qui n'est pas fourni, et ne le sera pas
 
@@ -103,11 +107,11 @@ Elle reste à choisir. Un point important : une licence qui **interdit** l'usage
 
 ## Suite proposée
 
-1. Essais sur de vraies machines Windows et Linux avec les trois émulateurs, puis calibration des seuils ([PERFORMANCE.fr.md](PERFORMANCE.fr.md)).
-2. Sources de mise à jour pour Dolphin et RetroArch, et installation des cores RetroArch manquants.
-3. Écran de réglages complet : choix de l'émulateur par console, réglage manuel de la qualité, options du thème.
-4. Récupération automatique des jaquettes (ScreenScraper, compte de l'utilisateur).
-5. Nouveaux adaptateurs : DuckStation, PPSSPP, melonDS, Cemu, RPCS3…
+1. Essais sur de vraies machines Windows et Linux avec les vrais émulateurs, puis calibration des seuils ([PERFORMANCE.fr.md](PERFORMANCE.fr.md)).
+2. Optimisation des réglages de melonDS (format 1.x) et de Cemu (graphic packs).
+3. Sources de mise à jour pour Dolphin et RetroArch, et installation des cores RetroArch manquants.
+4. Choix manuel de la qualité par jeu et options du thème dans l'écran de réglages.
+5. Récupération automatique des jaquettes (ScreenScraper, compte de l'utilisateur).
 6. Installateurs (NSIS pour Windows, AppImage et .deb pour Linux) via `cargo tauri build`.
 
-Autres documents : [THEMES.fr.md](THEMES.fr.md) · [PERFORMANCE.fr.md](PERFORMANCE.fr.md) · [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md) · [CHANGELOG](../../CHANGELOG.md)
+Autres documents : [EMULATORS.fr.md](EMULATORS.fr.md) · [THEMES.fr.md](THEMES.fr.md) · [PERFORMANCE.fr.md](PERFORMANCE.fr.md) · [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md) · [CHANGELOG](../../CHANGELOG.md)
