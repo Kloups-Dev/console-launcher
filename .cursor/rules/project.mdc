@@ -1,0 +1,8 @@
+---
+description: Consignes communes du projet de lanceur console
+alwaysApply: true
+---
+
+Lire et appliquer le fichier AGENTS.md à la racine du dépôt.
+Lire docs/DECISIONS.md avant de modifier l'architecture.
+Ne pas copier ces règles dans d'autres fichiers : AGENTS.md est la référence commune.

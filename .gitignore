@@ -1,0 +1,23 @@
+# Secrets et configuration locale
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Contenu local et données utilisateur
+/roms/
+/bios/
+/saves/
+/states/
+/userdata/
+/media-cache/
+/emulators/
+
+# Sorties et fichiers temporaires
+/build/
+/dist/
+/work/
+*.log
+.DS_Store
+Thumbs.db
