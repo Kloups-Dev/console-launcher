@@ -21,3 +21,9 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# .NET
+**/bin/
+**/obj/
+.vs/
+*.user

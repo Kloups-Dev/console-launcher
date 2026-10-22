@@ -1,0 +1,49 @@
+using System.Diagnostics;
+
+namespace Launcher.Core;
+
+public sealed record LaunchRequest(string Executable, IReadOnlyList<string> Arguments, string WorkingDirectory);
+
+public interface IEmulatorAdapter
+{
+    string Id { get; }
+    LaunchRequest Prepare(GameEntry game, string executable);
+}
+
+public sealed class DolphinAdapter : IEmulatorAdapter
+{
+    public string Id => "dolphin";
+
+    public LaunchRequest Prepare(GameEntry game, string executable)
+    {
+        if (game.SystemId != "gamecube") throw new InvalidOperationException("Ce module prend en charge GameCube pour le moment.");
+        if (string.IsNullOrWhiteSpace(game.FilePath) || !File.Exists(game.FilePath))
+            throw new FileNotFoundException("Ajoute un fichier de jeu avant de lancer une partie.");
+        if (!File.Exists(executable) || !string.Equals(Path.GetFileName(executable), "Dolphin.exe", StringComparison.OrdinalIgnoreCase))
+            throw new FileNotFoundException("Sélectionne Dolphin.exe dans les réglages.");
+        // CLI overrides are session-only. Existing Dolphin profiles and saves remain in use.
+        return new(Path.GetFullPath(executable), ["--batch", "--exec", Path.GetFullPath(game.FilePath),
+            "--config", "Dolphin.Display.Fullscreen=True"], Path.GetDirectoryName(Path.GetFullPath(executable))!);
+    }
+}
+
+public sealed class SessionRunner
+{
+    private int running;
+    public bool IsRunning => Volatile.Read(ref running) != 0;
+
+    public async Task<int> RunAsync(LaunchRequest request)
+    {
+        if (Interlocked.CompareExchange(ref running, 1, 0) != 0)
+            throw new InvalidOperationException("Une partie est déjà en cours.");
+        try
+        {
+            var start = new ProcessStartInfo(request.Executable) { UseShellExecute = false, WorkingDirectory = request.WorkingDirectory };
+            foreach (var argument in request.Arguments) start.ArgumentList.Add(argument);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Le jeu n'a pas pu démarrer.");
+            await process.WaitForExitAsync();
+            return process.ExitCode;
+        }
+        finally { Volatile.Write(ref running, 0); }
+    }
+}

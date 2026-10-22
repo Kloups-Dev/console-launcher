@@ -1,0 +1,58 @@
+<Window x:Class="Launcher.Desktop.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Console Launcher · Prototype" Width="1280" Height="800" MinWidth="960" MinHeight="650"
+ WindowStartupLocation="CenterScreen" Background="#0C111B" Foreground="#EDF2FA"
+ FontFamily="Segoe UI" PreviewKeyDown="OnKeyDown">
+ <Grid Margin="46,28">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <DockPanel>
+   <StackPanel Orientation="Horizontal"><TextBlock Text="◈" Foreground="#92E5C5" FontSize="28" Margin="0,0,12,0"/><StackPanel>
+    <TextBlock Text="CONSOLE LAUNCHER" FontWeight="SemiBold" FontSize="17"/>
+    <TextBlock Text="Votre collection. Votre terrain de jeu." Foreground="{StaticResource Muted}" FontSize="12"/>
+   </StackPanel></StackPanel>
+   <Button x:Name="SettingsButton" Content="Réglages" Click="OnSettings" HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+  </DockPanel>
+  <Grid Grid.Row="1" Margin="0,34,0,24">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <TextBlock x:Name="Eyebrow" Text="01 / VOS CONSOLES" Foreground="#92E5C5" FontSize="12" FontWeight="SemiBold"/>
+   <Grid Grid.Row="1" Margin="0,12,0,28">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel><TextBlock x:Name="SystemTitle" FontSize="46" FontWeight="SemiBold"/><TextBlock x:Name="SystemDescription" Foreground="{StaticResource Muted}" FontSize="15" Margin="0,8,0,0" TextWrapping="Wrap"/></StackPanel>
+    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="22,0,0,0"><TextBlock x:Name="SystemMaker" Foreground="{StaticResource Muted}" HorizontalAlignment="Right"/><TextBlock x:Name="CountLabel" Margin="0,6,0,0" HorizontalAlignment="Right"/></StackPanel>
+   </Grid>
+   <StackPanel x:Name="ConsoleStrip" Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,26"/>
+   <Border Grid.Row="3" Background="#111A28" CornerRadius="16" Padding="26">
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="300"/></Grid.ColumnDefinitions>
+     <Grid Margin="0,0,30,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <DockPanel Margin="0,0,0,14"><TextBlock Text="LA BIBLIOTHÈQUE" Foreground="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center"/>
+       <Button x:Name="ImportButton" Content="+ Ajouter un jeu" Click="OnImport" HorizontalAlignment="Right" Padding="12,7"/>
+      </DockPanel>
+      <ListBox x:Name="GameList" Grid.Row="1" Background="Transparent" BorderThickness="0" Foreground="#EDF2FA" SelectionChanged="OnGameSelected" MouseDoubleClick="OnGameDoubleClick"
+       ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+       <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="14,13"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+         <Border x:Name="Row" CornerRadius="8" Background="Transparent" BorderThickness="1" BorderBrush="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+         <ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="#223247"/><Setter TargetName="Row" Property="BorderBrush" Value="#92E5C5"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#1B283A"/></Trigger></ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+       </Style></ListBox.ItemContainerStyle>
+       <ListBox.ItemTemplate><DataTemplate><DockPanel><TextBlock Text="▶" Foreground="#92E5C5" Margin="0,0,12,0"/><TextBlock Text="{Binding Title}" FontSize="17" TextTrimming="CharacterEllipsis"/></DockPanel></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+     </Grid>
+     <Grid Grid.Column="1"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Border Background="#20394A" Height="102" CornerRadius="10"><TextBlock x:Name="GameMark" Text="GC" FontSize="42" FontWeight="Light" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#92E5C5"/></Border>
+      <StackPanel Grid.Row="1" Margin="0,16,0,0"><TextBlock x:Name="GameTitle" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock x:Name="GameDetail" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="13" Margin="0,10,0,12"/></StackPanel>
+      <Button x:Name="PlayButton" Grid.Row="3" Content="Jouer" Click="OnPlay" Background="#92E5C5" Foreground="#0C111B" FontWeight="SemiBold"/>
+     </Grid>
+    </Grid>
+   </Border>
+  </Grid>
+  <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel><TextBlock x:Name="StatusLabel" Text="Prototype · Les titres de démonstration sont fictifs." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"/>
+    <TextBlock Text="← → Naviguer     Entrée / A Choisir     Échap / B Retour     F11 Plein écran" FontSize="12" Margin="0,8,0,0"/>
+   </StackPanel><TextBlock x:Name="ControllerLabel" Grid.Column="1" Text="Clavier disponible" Foreground="#92E5C5" VerticalAlignment="Bottom" Margin="16,0,0,0"/>
+  </Grid>
+ </Grid>
+</Window>
