@@ -16,7 +16,7 @@ L'interface du lanceur : consoles de gauche à droite, liste des jeux, détail d
 
 ## Versions publiées
 
-Un tag commençant par `v` (par exemple `v0.3.0-qt`) lance l'intégration continue et publie les deux paquets en **pré-version** sur GitHub, rattachée au commit du tag et jamais marquée comme dernière version.
+Un tag commençant par `v` (par exemple `v0.3.0-qt`) lance l'intégration continue et publie les deux paquets en **pré-version** sur GitHub, rattachée au commit du tag et jamais marquée comme dernière version. Le tag peut venir de `git push`, ou de la page GitHub (Releases › Draft a new release, nouveau tag, cible = la branche, « Set as a pre-release ») : l'intégration continue ajoute alors les paquets à cette version.
 
 ## Compiler
 

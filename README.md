@@ -88,6 +88,6 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 
 ### 2026-10-23 — Pré-version de test Qt Quick (v0.3.0-qt)
 
-- Code : `88cdcea`, branche `feat/qt-quick-comparison`, envoyé ; tag `v0.3.0-qt` sur le commit de suivi.
-- Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version »).
-- Limites : la page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.
+- Code : `88cdcea` puis suivi CI, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version ») ; une version créée depuis la page GitHub (qui crée le tag) est complétée par la CI avec les paquets.
+- Limites : l'environnement de l'IA ne peut pas envoyer de tag ; le tag `v0.3.0-qt` est à créer par un humain. La page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.

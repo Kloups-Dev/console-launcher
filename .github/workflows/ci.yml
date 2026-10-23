@@ -178,6 +178,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -185,17 +187,27 @@ jobs:
         run: |
           set -e
           tag="${GITHUB_REF_NAME}"
+          # Branches holding the tagged commit (for the notes).
+          git fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
+          branch="$(git branch -r --contains "$GITHUB_SHA" | sed 's#origin/##; s/^ *//' | grep -v '^HEAD' | head -1)"
           version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           mkdir out
           (cd artifacts/console-launcher-qt-windows-x64 && zip -qr "../../out/ConsoleLauncher-${version}-windows-x64.zip" ConsoleLauncher)
           cp artifacts/console-launcher-qt-linux-x64/ConsoleLauncher-x86_64.AppImage "out/ConsoleLauncher-${version}-x86_64.AppImage"
           # Notes: header, then this version's changelog section.
           {
-            echo "Test build of the Qt Quick interface, branch \`feat/qt-quick-comparison\`. Not a final release."
+            echo "Test build of the Qt Quick interface, branch \`$branch\`. Not a final release."
             echo
-            echo "Version de test de l'interface Qt Quick, branche \`feat/qt-quick-comparison\`. Ce n'est pas une version finale."
+            echo "Version de test de l'interface Qt Quick, branche \`$branch\`. Ce n'est pas une version finale."
             echo
             awk -v v="## [${version}]" 'index($0, v) == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md
           } > notes.md
-          gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --prerelease --latest=false --title "Console Launcher ${version} (Qt Quick, test)" --notes-file notes.md
+          # A release made from the GitHub page (which creates the tag) is
+          # completed with the packages; otherwise the release is created.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$tag" out/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --notes-file notes.md
+          else
+            gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --prerelease --latest=false --title "Console Launcher ${version} (Qt Quick, test)" --notes-file notes.md
+          fi

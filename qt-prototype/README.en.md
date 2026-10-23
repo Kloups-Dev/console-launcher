@@ -16,7 +16,7 @@ The launcher's interface: consoles from left to right, game list, game details, 
 
 ## Releases
 
-A tag starting with `v` (for example `v0.3.0-qt`) runs the CI and publishes both packages as a GitHub **pre-release**, attached to the tagged commit and never marked as the latest release.
+A tag starting with `v` (for example `v0.3.0-qt`) runs the CI and publishes both packages as a GitHub **pre-release**, attached to the tagged commit and never marked as the latest release. The tag can come from `git push`, or from the GitHub page (Releases › Draft a new release, new tag, target = the branch, "Set as a pre-release"): the CI then adds the packages to that release.
 
 ## Building
 
