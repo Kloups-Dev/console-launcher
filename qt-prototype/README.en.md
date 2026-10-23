@@ -16,7 +16,12 @@ The launcher's interface: consoles from left to right, game list, game details, 
 
 ## Releases
 
-A tag starting with `v` (for example `v0.3.0-qt`) runs the CI and publishes both packages as a GitHub **pre-release**, attached to the tagged commit and never marked as the latest release. The tag can come from `git push`, or from the GitHub page (Releases › Draft a new release, new tag, target = the branch, "Set as a pre-release"): the CI then adds the packages to that release.
+A pre-release is published automatically, with both packages and this version's section of `CHANGELOG.md` as notes:
+
+- on each push to `feat/qt-quick-comparison` whose version (`version` in `Cargo.toml`) has no release yet; the tag `v<version>-qt` is created on that commit. Publishing a new test build therefore only takes a version bump with its changelog entry;
+- or from a tag starting with `v`, pushed with git or created from the GitHub page (Releases › Draft a new release).
+
+Pre-releases are attached to their commit and never marked as the latest release.
 
 ## Building
 

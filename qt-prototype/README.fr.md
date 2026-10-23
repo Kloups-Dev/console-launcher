@@ -16,7 +16,12 @@ L'interface du lanceur : consoles de gauche à droite, liste des jeux, détail d
 
 ## Versions publiées
 
-Un tag commençant par `v` (par exemple `v0.3.0-qt`) lance l'intégration continue et publie les deux paquets en **pré-version** sur GitHub, rattachée au commit du tag et jamais marquée comme dernière version. Le tag peut venir de `git push`, ou de la page GitHub (Releases › Draft a new release, nouveau tag, cible = la branche, « Set as a pre-release ») : l'intégration continue ajoute alors les paquets à cette version.
+Une pré-version est publiée automatiquement, avec les deux paquets et la section de `CHANGELOG.md` de cette version comme notes :
+
+- à chaque envoi sur `feat/qt-quick-comparison` dont la version (`version` dans `Cargo.toml`) n'a pas encore de release ; le tag `v<version>-qt` est créé sur ce commit. Publier une nouvelle version de test demande donc seulement de changer le numéro de version, avec son entrée de changelog ;
+- ou à partir d'un tag commençant par `v`, envoyé avec git ou créé depuis la page GitHub (Releases › Draft a new release).
+
+Les pré-versions sont rattachées à leur commit et jamais marquées comme dernière version.
 
 ## Compiler
 

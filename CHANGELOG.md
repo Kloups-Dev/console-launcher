@@ -15,6 +15,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Logs: `console-launcher.log` (interface) and `console-launcher-engine.log` (engine) next to the program, or in the temporary folder when that folder is read-only.
 - When a theme cannot be loaded, a window lists the errors instead of a program running with no window.
 - CI: both packages are started on Windows and Linux with `--smoke-test` before being published.
+- CI: a pre-release `v<version>-qt` is published automatically, with the changelog as notes, when the branch's version has no release yet; no tag to create by hand.
 
 **Changed**
 - Controller support (SDL) starts after the window, on its own thread, so a slow device never delays the interface.
@@ -28,6 +29,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Journaux : `console-launcher.log` (interface) et `console-launcher-engine.log` (moteur) à côté du programme, ou dans le dossier temporaire quand ce dossier est en lecture seule.
 - Quand un thème ne peut pas être chargé, une fenêtre affiche les erreurs au lieu d'un programme qui tourne sans fenêtre.
 - Intégration continue : les deux paquets sont démarrés sous Windows et Linux avec `--smoke-test` avant d'être publiés.
+- Intégration continue : une pré-version `v<version>-qt` est publiée automatiquement, avec le changelog en notes, quand la version de la branche n'a pas encore de release ; plus de tag à créer à la main.
 
 **Modifications**
 - La prise en charge des manettes (SDL) démarre après la fenêtre, sur son propre fil, pour qu'un périphérique lent ne retarde jamais l'interface.

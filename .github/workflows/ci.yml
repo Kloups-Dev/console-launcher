@@ -186,11 +186,16 @@ jobs:
           name: console-launcher-qt-linux-x64
           path: dist
 
-  # A tag "v…" publishes a pre-release with both packages. The release points
-  # at the tagged commit, so it belongs to the branch that commit is on.
+  # Pre-release with both packages, created automatically:
+  # - on a push to the release branch, when its version (Cargo.toml) has no
+  #   release yet: tag "v<version>-qt" is created on the pushed commit;
+  # - on a pushed tag "v…" (or a release created from the GitHub page).
+  # Notes = this version's section of CHANGELOG.md.
   release:
     name: pre-release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/feat/qt-quick-comparison')
     needs: [engine, windows, linux]
     runs-on: ubuntu-24.04
     permissions:
@@ -207,11 +212,21 @@ jobs:
       - name: Publish
         run: |
           set -e
-          tag="${GITHUB_REF_NAME}"
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="v${version}-qt"
+            # Same version already published: nothing to do until the
+            # version number changes.
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              echo "::notice title=Pre-release::$tag already published; bump the version to publish again."
+              exit 0
+            fi
+          fi
           # Branches holding the tagged commit (for the notes).
           git fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
           branch="$(git branch -r --contains "$GITHUB_SHA" | sed 's#origin/##; s/^ *//' | grep -v '^HEAD' | head -1)"
-          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           mkdir out
           (cd artifacts/console-launcher-qt-windows-x64 && zip -qr "../../out/ConsoleLauncher-${version}-windows-x64.zip" ConsoleLauncher)
           cp artifacts/console-launcher-qt-linux-x64/ConsoleLauncher-x86_64.AppImage "out/ConsoleLauncher-${version}-x86_64.AppImage"
@@ -229,6 +244,7 @@ jobs:
             gh release upload "$tag" out/* --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --notes-file notes.md
           else
-            gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --prerelease --latest=false --title "Console Launcher ${version} (Qt Quick, test)" --notes-file notes.md
           fi
+          echo "::notice title=Pre-release::$tag published"
