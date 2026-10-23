@@ -4,6 +4,34 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [0.3.1] — 2026-10-23 — Windows start-up fix
+
+### English
+
+**Fixed**
+- Windows (and Linux AppImage): the launcher started without opening any window. The built-in QML components (`import ConsoleLauncher`, settings panel) were not shipped with the packages; they are now compiled into the program.
+
+**Added**
+- Logs: `console-launcher.log` (interface) and `console-launcher-engine.log` (engine) next to the program, or in the temporary folder when that folder is read-only.
+- When a theme cannot be loaded, a window lists the errors instead of a program running with no window.
+- CI: both packages are started on Windows and Linux with `--smoke-test` before being published.
+
+**Changed**
+- Controller support (SDL) starts after the window, on its own thread, so a slow device never delays the interface.
+
+### Français
+
+**Corrections**
+- Windows (et AppImage Linux) : le lanceur démarrait sans ouvrir de fenêtre. Les composants QML intégrés (`import ConsoleLauncher`, panneau de réglages) n'étaient pas fournis dans les paquets ; ils sont maintenant compilés dans le programme.
+
+**Ajouts**
+- Journaux : `console-launcher.log` (interface) et `console-launcher-engine.log` (moteur) à côté du programme, ou dans le dossier temporaire quand ce dossier est en lecture seule.
+- Quand un thème ne peut pas être chargé, une fenêtre affiche les erreurs au lieu d'un programme qui tourne sans fenêtre.
+- Intégration continue : les deux paquets sont démarrés sous Windows et Linux avec `--smoke-test` avant d'être publiés.
+
+**Modifications**
+- La prise en charge des manettes (SDL) démarre après la fenêtre, sur son propre fil, pour qu'un périphérique lent ne retarde jamais l'interface.
+
 ## [0.3.0] — 2026-10-23 — Qt Quick interface
 
 ### English

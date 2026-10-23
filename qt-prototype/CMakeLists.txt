@@ -81,7 +81,6 @@ qt_add_qml_module(console-launcher-qt
     QML_FILES
         ui/SettingsPanel.qml
         ui/SettingsRow.qml
-    NO_RESOURCE_TARGET_PATH
 )
 
 if(WIN32)

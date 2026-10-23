@@ -51,3 +51,9 @@ Les paquets produits par l'intégration continue contiennent les outils de mesur
 | `CONSOLE_LAUNCHER_QT_THEMES` | Dossier des thèmes, pour travailler sur un thème ailleurs |
 | `CONSOLE_LAUNCHER_TOOLS` | Dossier des outils de mesure |
 | `RUST_LOG` | Niveau de journal du moteur (`info` par défaut) |
+
+## Journaux et test de démarrage
+
+L'interface écrit `console-launcher.log` et le moteur `console-launcher-engine.log` à côté de l'exécutable (ou dans le dossier temporaire quand ce dossier est en lecture seule). Ils sont réécrits à chaque démarrage. Quand un thème ne peut pas être chargé, une fenêtre affiche les erreurs.
+
+`console-launcher-qt --smoke-test` charge le thème, demande la bibliothèque, puis s'arrête : code 0 si le thème s'est chargé. L'intégration continue le lance sur les deux paquets.

@@ -51,3 +51,9 @@ The packages built by the CI carry the smoothness measurement tools in `tools/` 
 | `CONSOLE_LAUNCHER_QT_THEMES` | Themes folder, to work on a theme elsewhere |
 | `CONSOLE_LAUNCHER_TOOLS` | Folder of the measurement tools |
 | `RUST_LOG` | Engine log level (`info` by default) |
+
+## Logs and start-up check
+
+The interface writes `console-launcher.log` and the engine `console-launcher-engine.log` next to the executable (or in the temporary folder when that folder is read-only). They are rewritten at each start. When a theme cannot be loaded, a window lists the errors.
+
+`console-launcher-qt --smoke-test` loads the theme, asks for the library, then exits: code 0 when the theme loaded. The CI runs it on both packages.
