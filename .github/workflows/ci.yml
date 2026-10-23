@@ -59,9 +59,11 @@ jobs:
       - name: Build
         shell: bash
         run: |
+          set -o pipefail
+          report() { grep -iE "error|cannot|could not|not found" build.log | grep -v "^ *$" | head -25 | sed 's/^/::error::/'; exit 1; }
           cmake -S qt-prototype -B build -G "Visual Studio 17 2022" -A x64 \
-            -DCMAKE_BUILD_TYPE=Release -DSDL2_DIR="$SDL2_ROOT/cmake"
-          cmake --build build --config Release
+            -DCMAKE_BUILD_TYPE=Release -DSDL2_DIR="$SDL2_ROOT/cmake" 2>&1 | tee build.log || report
+          cmake --build build --config Release 2>&1 | tee build.log || report
       - name: Collect files
         shell: bash
         run: |
@@ -108,8 +110,10 @@ jobs:
           cache: true
       - name: Build
         run: |
-          cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j
+          set -o pipefail
+          report() { grep -iE "error|cannot|could not|not found" build.log | head -25 | sed 's/^/::error::/'; exit 1; }
+          cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee build.log || report
+          cmake --build build -j 2>&1 | tee build.log || report
       - name: AppImage
         run: |
           set -e
