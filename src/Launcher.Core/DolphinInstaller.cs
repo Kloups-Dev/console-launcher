@@ -78,7 +78,7 @@ public sealed class DolphinInstaller(HttpClient http, string dataDirectory)
             var installed = new DolphinInstallation(DolphinPackage.Current.Version, executable, UserDirectory, hash);
             InitializeUserDirectory(UserDirectory);
             File.WriteAllText(Path.Combine(destination, "installation.json"), JsonSerializer.Serialize(installed));
-            progress?.Report(new("Dolphin installé. Profil GameCube XInput de départ prêt.", 100));
+            progress?.Report(new("Dolphin installé. Profil GameCube clavier et XInput prêt.", 100));
             return installed;
         }
         finally
@@ -169,33 +169,6 @@ public sealed class DolphinInstaller(HttpClient http, string dataDirectory)
         Directory.CreateDirectory(config);
         var path = Path.Combine(config, "GCPadNew.ini");
         // First-run profile only. Never overwrite the player's changes.
-        if (!File.Exists(path)) File.WriteAllText(path, """
-            [GCPad1]
-            Device = XInput/0/Gamepad
-            Buttons/A = `Button A`
-            Buttons/B = `Button B`
-            Buttons/X = `Button X`
-            Buttons/Y = `Button Y`
-            Buttons/Z = `Shoulder R`
-            Buttons/Start = Start
-            Main Stick/Up = `Left Y+`
-            Main Stick/Down = `Left Y-`
-            Main Stick/Left = `Left X-`
-            Main Stick/Right = `Left X+`
-            Main Stick/Dead Zone = 15
-            C-Stick/Up = `Right Y+`
-            C-Stick/Down = `Right Y-`
-            C-Stick/Left = `Right X-`
-            C-Stick/Right = `Right X+`
-            C-Stick/Dead Zone = 15
-            Triggers/L = `Trigger L`
-            Triggers/R = `Trigger R`
-            Triggers/L-Analog = `Trigger L`
-            Triggers/R-Analog = `Trigger R`
-            D-Pad/Up = `Pad N`
-            D-Pad/Down = `Pad S`
-            D-Pad/Left = `Pad W`
-            D-Pad/Right = `Pad E`
-            """);
+        if (!File.Exists(path)) File.WriteAllText(path, DolphinControls.CreateProfile(DolphinInputMode.Both));
     }
 }

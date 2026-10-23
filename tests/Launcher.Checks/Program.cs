@@ -271,7 +271,30 @@ try
     Check(File.ReadAllText(cachedExe) == "damaged", "Failed repair preserves previous installation");
     File.WriteAllText(Path.Combine(cachedVersion, "installation.json"), JsonSerializer.Serialize(receipt with { Executable = executable }));
     Check(cachedInstaller.Detect() is null, "Receipt cannot redirect to an unrelated executable");
-    Console.WriteLine($"PASS: {checks} checks (library, launch sessions, graceful close and Dolphin installation).");
+    var keyboardProfile = DolphinControls.CreateProfile(DolphinInputMode.Keyboard);
+    Check(keyboardProfile.Contains("DInput/0/Keyboard Mouse:UP") && keyboardProfile.Contains("DInput/0/Keyboard Mouse:RETURN"), "Keyboard binds directions and Start to Dolphin Windows key names");
+    Check(!keyboardProfile.Contains("XInput"), "Keyboard-only profile has no controller dependency");
+    Check(!DolphinControls.CreateProfile(DolphinInputMode.Gamepad).Contains("DInput/"), "Gamepad-only profile has no keyboard bindings");
+    var combined = DolphinControls.CreateProfile(DolphinInputMode.Both);
+    Check(combined.Contains("`DInput/0/Keyboard Mouse:X` | `XInput/0/Gamepad:Button A`"), "Combined profile explicitly binds both devices");
+    Expect<ArgumentOutOfRangeException>(() => DolphinControls.CreateProfile((DolphinInputMode)99));
+    var controlsUser = Path.Combine(root, "controls-user");
+    Directory.CreateDirectory(Path.Combine(controlsUser, "Config"));
+    var controlsPath = Path.Combine(controlsUser, "Config", "GCPadNew.ini");
+    var customControls = "; personal file\r\n[GCPad1]\r\nDevice = custom\r\n[GCPad2]\r\nDevice = second-player\r\n[Other]\r\nSetting = preserved\r\n";
+    File.WriteAllText(controlsPath, customControls);
+    var backup = DolphinControls.Apply(controlsUser, DolphinInputMode.Keyboard);
+    Check(backup is not null && File.ReadAllText(backup) == customControls, "Changing controls backs up the exact original");
+    var changedControls = File.ReadAllText(controlsPath);
+    Check(changedControls.Contains(keyboardProfile) && !changedControls.Contains("Device = custom"), "Applying keyboard replaces player 1 controls");
+    Check(changedControls.Contains("[GCPad2]\nDevice = second-player") && changedControls.Contains("[Other]\nSetting = preserved"), "Other players and sections survive profile changes");
+    Check(DolphinControls.Apply(controlsUser, DolphinInputMode.Keyboard) is null && File.ReadAllText(controlsPath) == changedControls, "Reapplying same controls is idempotent");
+    var newUser = Path.Combine(root, "new-keyboard-user");
+    DolphinInstaller.InitializeUserDirectory(newUser);
+    Check(File.ReadAllText(Path.Combine(newUser, "Config", "GCPadNew.ini")) == combined, "First install enables keyboard and XInput together");
+    DolphinInstaller.InitializeUserDirectory(controlsUser);
+    Check(File.ReadAllText(controlsPath) == changedControls, "Installer never resets the player's chosen controls");
+    Console.WriteLine($"PASS: {checks} checks (library, sessions, installation and Dolphin keyboard/gamepad profiles).");
 }
 finally
 {
