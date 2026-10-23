@@ -27,6 +27,14 @@ if (args.Length > 0 && args[0] == "--child")
     return;
 }
 
+if (args.Length > 0 && args[0] == "--diagnostic-child")
+{
+    Console.Write(new string('x', 100000));
+    Console.Error.Write("simulated emulator stderr");
+    Environment.ExitCode = 7;
+    return;
+}
+
 if (args.Length > 0 && args[0] == "--window-child")
 {
     // A real, offscreen window checks graceful WM_CLOSE handling without an emulator or ROM.
@@ -294,7 +302,43 @@ try
     Check(File.ReadAllText(Path.Combine(newUser, "Config", "GCPadNew.ini")) == combined, "First install enables keyboard and XInput together");
     DolphinInstaller.InitializeUserDirectory(controlsUser);
     Check(File.ReadAllText(controlsPath) == changedControls, "Installer never resets the player's chosen controls");
-    Console.WriteLine($"PASS: {checks} checks (library, sessions, installation and Dolphin keyboard/gamepad profiles).");
+    var logRoot = Path.Combine(root, "logs");
+    var diagnostic = new DiagnosticLog(logRoot, pathToRedact: root);
+    diagnostic.Write("test", "Local path: " + Path.Combine(root, "game.iso"));
+    Check(File.Exists(diagnostic.FilePath), "Diagnostic is persisted immediately");
+    var firstLine = diagnostic.Snapshot().Single();
+    Check(!firstLine.Contains(root, StringComparison.OrdinalIgnoreCase) && firstLine.Contains("%USERPROFILE%"), "Home path is reduced in local diagnostics");
+    using (var parsed = JsonDocument.Parse(firstLine))
+        Check(parsed.RootElement.GetProperty("RunId").GetString() == diagnostic.RunId, "Every record identifies its application run");
+    var loggedRunner = new SessionRunner(diagnostic);
+    var debugExit = await loggedRunner.RunAsync(new(host, [Assembly.GetExecutingAssembly().Location, "--diagnostic-child"], root)).WaitAsync(TimeSpan.FromSeconds(10));
+    Check(debugExit == 7 && !loggedRunner.IsRunning, "Noisy failed child exits without blocking capture");
+    var records = diagnostic.Snapshot();
+    Check(records.Any(line => line.Contains("process.start")) && records.Any(line => line.Contains("process.exit")), "Session start and exit are retained");
+    Check(records.Any(line => line.Contains("simulated emulator stderr")), "Emulator stderr is captured");
+    Check(records.Any(line => line.Contains("tronqu")), "Noisy output is bounded with a visible truncation marker");
+    Check(records.Any(line => line.Contains("process.exit") && line.Contains("Error")), "Nonzero emulator exit is an error");
+    var rotation = new DiagnosticLog(Path.Combine(root, "rotation"), 1024);
+    for (var i = 0; i < 50; i++) rotation.Write("rotation", new string('r', 600));
+    Check(Directory.GetFiles(rotation.DirectoryPath).Length == 5, "Rotation retains exactly five files");
+    Check(rotation.Snapshot().Length < 50, "Rotation discards oldest entries");
+    var blockedLogPath = Path.Combine(root, "blocked-log-directory");
+    File.WriteAllText(blockedLogPath, "fixture");
+    var blockedLog = new DiagnosticLog(blockedLogPath);
+    blockedLog.Write("test", "must not crash");
+    Check(blockedLog.LastWriteError is not null, "Diagnostic write failure is observable without throwing");
+    var probe = new InputProbe();
+    probe.Key(true); probe.Mouse(true);
+    Check(probe.KeyDowns == 0 && probe.MouseClicks == 0, "Inactive test ignores input");
+    probe.Start(); probe.Key(true); probe.Key(true, repeated: true); probe.Key(false); probe.Mouse(false); probe.Mouse(true); probe.LoseFocus();
+    Check(probe.KeyDowns == 1 && probe.KeyUps == 1 && probe.MouseMoves == 1 && probe.MouseClicks == 1 && probe.FocusLosses == 1, "Probe counts focused activity and ignores repeated keydown");
+    probe.Stop(); probe.Key(true);
+    Check(probe.KeyDowns == 1, "Stopped test does not record further input");
+    probe.Start();
+    diagnostic.Write("input.test.result", probe.Summary(true), DiagnosticLevel.Observation);
+    Check(probe.KeyDowns == 0 && probe.Summary(true).Contains("ne prouvent pas un bug"), "Remote absence of input never asserts a defect");
+    Check(diagnostic.Snapshot().Last().Contains("Observation") && !diagnostic.Snapshot().Last().Contains("Error"), "Remote input test remains an observation");
+    Console.WriteLine($"PASS: {checks} checks (library, sessions, installation, controls and local diagnostics).");
 }
 finally
 {

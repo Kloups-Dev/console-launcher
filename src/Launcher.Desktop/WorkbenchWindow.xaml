@@ -82,13 +82,23 @@
        </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="État et diagnostic">
-       <Grid Margin="14"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+       <Grid Margin="14"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <TextBlock x:Name="SessionPhaseText" FontSize="20" FontWeight="SemiBold"/>
         <TextBlock x:Name="SessionMessageText" Grid.Row="1" TextWrapping="Wrap" Margin="0,8,0,12"/>
-        <ListBox x:Name="DiagnosticsList" Grid.Row="2" FontFamily="Consolas" FontSize="12" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Grid.Row="2" Margin="0,0,0,12">
+         <CheckBox x:Name="RemoteInputBox" Content="Je teste depuis un bureau distant / iPad" Checked="OnRemoteInputChanged" Unchecked="OnRemoteInputChanged"/>
+         <TextBlock x:Name="RemoteContextText" TextWrapping="Wrap" Margin="0,6,0,8"/>
+         <StackPanel Orientation="Horizontal"><Button x:Name="StartInputTestButton" Content="Tester clavier / souris (10 s)" Click="OnStartInputTest"/><Button x:Name="StopInputTestButton" Content="Terminer le test" Click="OnStopInputTest" IsEnabled="False"/></StackPanel>
+         <Border x:Name="InputTestSurface" Focusable="True" Background="#EEF4FA" BorderBrush="#8BAAC9" BorderThickness="1" Padding="10" Margin="0,8,0,0"
+          PreviewKeyDown="OnProbeKeyDown" PreviewKeyUp="OnProbeKeyUp" PreviewMouseMove="OnProbeMouseMove" PreviewMouseDown="OnProbeMouseDown" LostKeyboardFocus="OnProbeFocusLost">
+          <TextBlock x:Name="InputTestText" Text="Démarrez le test, puis utilisez les touches et la souris dans cette zone. Aucun texte saisi n'est enregistré." TextWrapping="Wrap"/>
+         </Border>
+         <TextBlock x:Name="LogLocationText" TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
+        </StackPanel>
+        <ListBox x:Name="DiagnosticsList" Grid.Row="3" FontFamily="Consolas" FontSize="12" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
          <ListBox.ItemTemplate><DataTemplate><TextBlock TextWrapping="Wrap"><Run Text="{Binding At, StringFormat=HH:mm:ss}"/><Run Text="  "/><Run Text="{Binding Message}"/></TextBlock></DataTemplate></ListBox.ItemTemplate>
         </ListBox>
-        <Button Grid.Row="3" Content="Exporter le diagnostic…" Click="OnExport" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0"><Button Content="Exporter le diagnostic…" Click="OnExport"/><Button Content="Ouvrir les journaux" Click="OnOpenLogs"/></StackPanel>
        </Grid>
       </TabItem>
      </TabControl>
