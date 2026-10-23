@@ -85,3 +85,9 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Fait : moteur intégré à l'application Qt (crates `cl-api` et `cl-ffi`, bibliothèque `console_launcher_engine`, appels sur des fils de travail) ; Qt 6.8 LTS minimum ; panneau de réglages QML partagé par les thèmes (`import ConsoleLauncher`) ; PresentMon 2.6.0 et MangoHud 0.8.4 fournis, bouton d'autorisation de la mesure sous Windows ; CI : paquet Windows (windeployqt) et AppImage Linux ; interface Tauri retirée de cette branche ; doc FR/EN (`ENGINE_API`, `THEMES` réécrit pour QML, `DEPENDENCIES`).
 - Vérifié : tests Rust, `cargo clippy -D warnings` et `cargo fmt` sous Linux et Windows (CI) ; application compilée avec Qt 6.8.4 et essayée sur écran virtuel Linux avec une fausse installation RetroBat (bibliothèque, détail des jeux, réglages, choix d'émulateur, page d'un émulateur manquant, lancement avec un faux PPSSPP) ; paquets Windows et Linux produits par la CI.
 - Limites : paquets non ouverts sur une vraie machine ; MangoHud fourni et autorisation PresentMon jamais essayés avec une vraie partie ; sélecteurs de fichiers non essayés à la manette ; PR n°1 (WPF) non modifiée.
+
+### 2026-10-23 — Pré-version de test Qt Quick (v0.3.0-qt)
+
+- Code : `88cdcea`, branche `feat/qt-quick-comparison`, envoyé ; tag `v0.3.0-qt` sur le commit de suivi.
+- Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version »).
+- Limites : la page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.
