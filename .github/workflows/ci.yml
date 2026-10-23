@@ -53,30 +53,27 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Ninja
         run: choco install ninja -y --no-progress
-      - name: SDL2
-        shell: bash
-        run: |
-          curl -fsSL -o sdl2.zip "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-VC.zip"
-          7z x -y sdl2.zip -o"$RUNNER_TEMP/sdl2" > /dev/null
-          echo "SDL2_ROOT=$RUNNER_TEMP/sdl2/SDL2-${SDL2_VERSION}" >> "$GITHUB_ENV"
+      # PowerShell: in bash, Git's own `link` would hide the MSVC linker.
       - name: Build
-        shell: bash
+        shell: pwsh
         run: |
-          set -o pipefail
-          report() { grep -iE "error|cannot|could not|not found" build.log | grep -v "^ *$" | head -25 | sed 's/^/::error::/'; exit 1; }
-          cmake -S qt-prototype -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DSDL2_DIR="$SDL2_ROOT/cmake" 2>&1 | tee build.log || report
-          cmake --build build 2>&1 | tee build.log || report
+          cargo build --release -p cl-ffi -p cl-cli
+          if ($LASTEXITCODE) { exit 1 }
+          cmake -S qt-prototype -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCL_ENGINE_PREBUILT_DIR="$PWD/target/release" -DSDL2_DIR="$env:SDL2_ROOT/cmake" *>&1 | Tee-Object build.log
+          if ($LASTEXITCODE) { $m = (Get-Content build.log -Tail 40) -join '%0A'; Write-Output "::error::$m"; exit 1 }
+          cmake --build build *>&1 | Tee-Object build.log
+          if ($LASTEXITCODE) { $m = (Select-String -Path build.log -Pattern 'error' | Select-Object -First 30 | ForEach-Object { $_.Line }) -join '%0A'; Write-Output "::error::$m"; exit 1 }
       - name: Collect files
         shell: bash
         run: |
           set -eo pipefail
           exec > >(tee step.log) 2>&1
-          trap 'tail -25 step.log | sed "s/^/::error::/"' ERR
+          trap 'echo "::error::$(tail -40 step.log | sed -e ":a" -e "N" -e "\$!ba" -e "s/\n/%0A/g")"' ERR
           out=dist/ConsoleLauncher
           mkdir -p "$out/tools/presentmon"
           cp build/console-launcher-qt.exe build/console_launcher_engine.dll "$out/"
-          cp build/cargo/release/clctl.exe "$out/"
+          cp target/release/clctl.exe "$out/"
           cp -r build/themes "$out/themes"
           cp "$SDL2_ROOT/lib/x64/SDL2.dll" "$out/"
           windeployqt --release --no-translations --qmldir qt-prototype/themes --qmldir qt-prototype/ui "$out/console-launcher-qt.exe"
@@ -116,14 +113,14 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          report() { grep -iE "error|cannot|could not|not found" build.log | head -25 | sed 's/^/::error::/'; exit 1; }
+          report() { echo "::error::$(grep -iE "error|cannot|could not|not found" build.log | head -30 | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')"; exit 1; }
           cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee build.log || report
           cmake --build build -j 2>&1 | tee build.log || report
       - name: AppImage
         run: |
           set -eo pipefail
           exec > >(tee step.log) 2>&1
-          trap 'tail -25 step.log | sed "s/^/::error::/"' ERR
+          trap 'echo "::error::$(tail -40 step.log | sed -e ":a" -e "N" -e "\$!ba" -e "s/\n/%0A/g")"' ERR
           app=AppDir/usr/bin
           mkdir -p "$app/tools/mangohud"
           cp build/console-launcher-qt build/libconsole_launcher_engine.so build/cargo/release/clctl "$app/"
