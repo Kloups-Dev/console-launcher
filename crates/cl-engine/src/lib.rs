@@ -3,10 +3,17 @@
 //! It keeps the interface free of emulator details: the interface asks for
 //! systems and games, then calls [`Engine::play`]; the engine chooses the
 //! emulator, the settings, measures when needed and adjusts the profile.
+//!
+//! Settings the user changes inside an emulator are noticed before each
+//! launch (`cl_core::watch`) and left alone from then on, until the user
+//! gives them back to the automatic optimisation
+//! ([`Engine::reset_emulator_tuning`]).
 
-use cl_adapters::{EmulatorAdapter, LaunchContext, LaunchPlan};
-use cl_core::config::{AppConfig, EmulatorConfig, EmulatorMode};
+use cl_adapters::profile::{self, Profile, ProfileAdapter};
+use cl_adapters::{EmulatorAdapter, ExeIndex, LaunchContext, LaunchPlan, SystemTweaks};
+use cl_core::config::{AppConfig, CustomEmulator, EmulatorConfig, EmulatorMode};
 use cl_core::paths::Paths;
+use cl_core::watch::SettingsWatch;
 use cl_core::{Game, SystemId, SystemInfo};
 use cl_hwprobe::{GpuKind, HardwareReport};
 use cl_perf::estimate::{estimate, GpuClass, HwSummary, LadderKind};
@@ -16,7 +23,9 @@ use cl_perf::tuner::TuneState;
 use cl_session::{CaptureRequest, SessionResult};
 use cl_updater::ManagedEmulator;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, thiserror::Error)]
@@ -25,10 +34,12 @@ pub enum EngineError {
     Config(#[from] cl_core::config::ConfigError),
     #[error("unknown emulator '{0}'")]
     UnknownEmulator(String),
-    #[error(
-        "{emulator} was not found. Set its path in the settings or let the launcher install it."
-    )]
-    EmulatorMissing { emulator: String },
+    #[error("{emulator} was not found. Choose its executable in Settings › Emulators.")]
+    EmulatorMissing { id: String, emulator: String },
+    #[error("no emulator can run {0}. Add one in Settings › Emulators.")]
+    NoEmulator(String),
+    #[error("{0} is not a file")]
+    NotAFile(PathBuf),
     #[error(transparent)]
     Adapter(#[from] cl_adapters::AdapterError),
     #[error(transparent)]
@@ -37,11 +48,42 @@ pub enum EngineError {
     Io(#[from] std::io::Error),
 }
 
+impl EngineError {
+    /// Message in the interface language (`fr` or English).
+    pub fn localized(&self, lang: &str) -> String {
+        if !lang.starts_with("fr") {
+            return self.to_string();
+        }
+        match self {
+            EngineError::EmulatorMissing { emulator, .. } => format!(
+                "{emulator} est introuvable. Choisis son exécutable dans Réglages › Émulateurs."
+            ),
+            EngineError::NoEmulator(system) => format!(
+                "Aucun émulateur ne lance {system}. Ajoutes-en un dans Réglages › Émulateurs."
+            ),
+            EngineError::UnknownEmulator(id) => format!("Émulateur inconnu : {id}"),
+            EngineError::NotAFile(p) => format!("{} n'est pas un fichier", p.display()),
+            other => other.to_string(),
+        }
+    }
+
+    /// Short machine-readable code, for interfaces that translate messages.
+    pub fn code(&self) -> &'static str {
+        match self {
+            EngineError::EmulatorMissing { .. } => "emulator_missing",
+            EngineError::NoEmulator(_) => "no_emulator",
+            EngineError::UnknownEmulator(_) => "unknown_emulator",
+            _ => "error",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemEntry {
     pub info: SystemInfo,
     pub games: usize,
     pub emulator: String,
+    pub emulator_name: String,
     pub emulator_found: bool,
 }
 
@@ -50,10 +92,13 @@ pub struct SystemEntry {
 pub struct PreparedLaunch {
     pub game: Game,
     pub emulator: String,
+    pub emulator_name: String,
     pub step: usize,
     pub step_label: String,
     pub ladder: Vec<String>,
     pub measure: bool,
+    /// False when only the system-level optimisations apply.
+    pub tunes_settings: bool,
     pub plan: LaunchPlan,
     pub notes: Vec<String>,
 }
@@ -70,6 +115,63 @@ pub struct PlayReport {
     pub notes: Vec<String>,
 }
 
+/// One emulator as shown in the settings.
+#[derive(Debug, Clone, Serialize)]
+pub struct EmulatorStatus {
+    pub id: String,
+    pub name: String,
+    /// Added by the user (no profile).
+    pub custom: bool,
+    /// Described by a profile file in the data folder.
+    pub user_profile: bool,
+    pub systems: Vec<SystemId>,
+    pub license: String,
+    pub homepage: String,
+    pub mode: EmulatorMode,
+    /// Path chosen by the user, if any.
+    pub configured_path: Option<PathBuf>,
+    /// Executable that will be used (chosen or detected).
+    pub path: Option<PathBuf>,
+    pub found: bool,
+    /// Whether the launcher tunes the emulator's own settings.
+    pub tunes_settings: bool,
+    /// Settings the user changed in the emulator (left alone) or locked.
+    pub user_settings: Vec<String>,
+}
+
+/// Emulator choice for one system, as shown in the settings.
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemChoice {
+    pub info: SystemInfo,
+    pub games: usize,
+    /// Emulator used now.
+    pub emulator: String,
+    /// True when the launcher picks the emulator (no choice saved).
+    pub automatic: bool,
+    pub options: Vec<EmulatorOption>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EmulatorOption {
+    pub id: String,
+    pub name: String,
+    pub found: bool,
+}
+
+/// What a folder given by the user turned out to be.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FolderKind {
+    Games,
+    /// A folder of emulators (RetroBat `emulators`, …).
+    Emulators,
+    /// The executable of a known emulator.
+    Emulator {
+        id: String,
+    },
+    AlreadyAdded,
+}
+
 /// Adapter, its settings and the executable found (if any).
 pub type FoundEmulator = (Box<dyn EmulatorAdapter>, EmulatorConfig, Option<PathBuf>);
 
@@ -77,6 +179,10 @@ pub struct Engine {
     pub paths: Paths,
     pub config: AppConfig,
     hardware: Option<HardwareReport>,
+    user_profiles: Vec<Profile>,
+    /// Profile files that could not be read, for the settings screen.
+    pub profile_errors: Vec<String>,
+    index: RefCell<Option<ExeIndex>>,
 }
 
 fn now() -> u64 {
@@ -86,22 +192,323 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+/// Picks the French or English text according to the interface language.
+fn tr(lang: &str, en: String, fr: String) -> String {
+    if lang.starts_with("fr") {
+        fr
+    } else {
+        en
+    }
+}
+
+fn same_name(p: &Path, names: &[String]) -> bool {
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .is_some_and(|n| names.iter().any(|x| x.to_lowercase() == n))
+}
+
 impl Engine {
     pub fn load(paths: Paths) -> Result<Engine, EngineError> {
         let config = AppConfig::load(&paths.config_file())?;
         let hardware = std::fs::read_to_string(paths.root.join("hardware.json"))
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok());
-        Ok(Engine {
+        let mut engine = Engine {
             paths,
             config,
             hardware,
-        })
+            user_profiles: Vec::new(),
+            profile_errors: Vec::new(),
+            index: RefCell::new(None),
+        };
+        engine.reload_profiles();
+        if engine.migrate_config() {
+            log::info!("settings: misplaced emulator paths moved");
+            if let Err(e) = engine.save_config() {
+                log::warn!("cannot save the migrated settings: {e}");
+            }
+        }
+        Ok(engine)
     }
 
     pub fn save_config(&self) -> Result<(), EngineError> {
         self.config.save(&self.paths.config_file())?;
+        self.index.replace(None);
         Ok(())
+    }
+
+    /// Reads the profile files of the data folder again.
+    pub fn reload_profiles(&mut self) {
+        let (ok, errors) = profile::load_dir(&self.paths.root.join("emulator-profiles"));
+        self.user_profiles = ok;
+        self.profile_errors = errors.into_iter().map(|e| e.to_string()).collect();
+        self.index.replace(None);
+    }
+
+    /// Every emulator known: custom ones, profile files (which may replace
+    /// a bundled profile of the same id), then built-in adapters.
+    pub fn adapters(&self) -> Vec<Box<dyn EmulatorAdapter>> {
+        let mut out: Vec<Box<dyn EmulatorAdapter>> = Vec::new();
+        for (id, c) in &self.config.custom_emulators {
+            out.push(Box::new(ProfileAdapter::new(Profile::custom(id, c))));
+        }
+        for p in &self.user_profiles {
+            out.push(Box::new(ProfileAdapter::new(p.clone())));
+        }
+        let mut seen: BTreeSet<String> = out.iter().map(|a| a.id().to_owned()).collect();
+        for a in cl_adapters::registry() {
+            if seen.insert(a.id().to_owned()) {
+                out.push(a);
+            }
+        }
+        out
+    }
+
+    pub fn adapter(&self, id: &str) -> Option<Box<dyn EmulatorAdapter>> {
+        self.adapters().into_iter().find(|a| a.id() == id)
+    }
+
+    /// Folders searched for emulator executables: the folders chosen by
+    /// the user, the `emulators` folder next to a `roms` folder (RetroBat
+    /// layout), and on Windows `X:\RetroBat\emulators` on every drive.
+    pub fn emulator_search_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = self.config.emulator_dirs.clone();
+        for r in &self.config.rom_dirs {
+            if r.file_name()
+                .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("roms"))
+            {
+                if let Some(parent) = r.parent() {
+                    dirs.push(parent.join("emulators"));
+                }
+            }
+            dirs.push(r.join("emulators"));
+        }
+        if cfg!(windows) {
+            for letter in b'C'..=b'Z' {
+                dirs.push(PathBuf::from(format!(
+                    "{}:\\RetroBat\\emulators",
+                    letter as char
+                )));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        dirs.into_iter()
+            .filter(|d| d.is_dir() && seen.insert(d.clone()))
+            .collect()
+    }
+
+    fn with_index<T>(&self, f: impl FnOnce(&ExeIndex) -> T) -> T {
+        if self.index.borrow().is_none() {
+            let names: Vec<String> = self.adapters().iter().flat_map(|a| a.exe_names()).collect();
+            let idx = ExeIndex::build(&self.emulator_search_dirs(), &names);
+            self.index.replace(Some(idx));
+        }
+        f(self.index.borrow().as_ref().expect("built above"))
+    }
+
+    /// Moves paths the user put in the wrong list: an emulator executable
+    /// or a folder of emulators added as a game folder. Returns true when
+    /// the settings changed.
+    pub fn migrate_config(&mut self) -> bool {
+        let dirs = std::mem::take(&mut self.config.rom_dirs);
+        let mut changed = false;
+        for d in dirs {
+            match self.classify(&d) {
+                Some(FolderKind::Emulator { id }) => {
+                    self.set_path_in_config(&id, Some(d));
+                    changed = true;
+                }
+                Some(FolderKind::Emulators) => {
+                    // A folder already inside an emulator folder adds nothing.
+                    if !self.config.emulator_dirs.iter().any(|e| d.starts_with(e)) {
+                        self.config.emulator_dirs.push(d);
+                    }
+                    changed = true;
+                }
+                _ => self.config.rom_dirs.push(d),
+            }
+        }
+        if changed {
+            self.index.replace(None);
+        }
+        changed
+    }
+
+    /// Tells what a path is: an emulator executable, a folder of
+    /// emulators, or a game folder (`None` when it does not exist).
+    fn classify(&self, p: &Path) -> Option<FolderKind> {
+        let adapters = self.adapters();
+        if p.is_file() {
+            return adapters
+                .iter()
+                .filter(|a| !self.config.custom_emulators.contains_key(a.id()))
+                .find(|a| same_name(p, &a.exe_names()))
+                .map(|a| FolderKind::Emulator { id: a.id().into() });
+        }
+        if !p.is_dir() {
+            return None;
+        }
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if name == "emulators" {
+            return Some(FolderKind::Emulators);
+        }
+        let has_games = !cl_library::scan(&[p.to_path_buf()]).is_empty();
+        if has_games {
+            return Some(FolderKind::Games);
+        }
+        let names: Vec<String> = adapters.iter().flat_map(|a| a.exe_names()).collect();
+        if cl_adapters::find_in_tree(p, &names).is_some() {
+            return Some(FolderKind::Emulators);
+        }
+        Some(FolderKind::Games)
+    }
+
+    /// Adds a folder or file chosen by the user where it belongs.
+    pub fn add_path(&mut self, p: PathBuf) -> Result<FolderKind, EngineError> {
+        let kind = self
+            .classify(&p)
+            .ok_or_else(|| EngineError::NotAFile(p.clone()))?;
+        match &kind {
+            FolderKind::Games => {
+                if self.config.rom_dirs.contains(&p) {
+                    return Ok(FolderKind::AlreadyAdded);
+                }
+                self.config.rom_dirs.push(p);
+            }
+            FolderKind::Emulators => {
+                if self.config.emulator_dirs.iter().any(|e| p.starts_with(e)) {
+                    return Ok(FolderKind::AlreadyAdded);
+                }
+                self.config.emulator_dirs.push(p);
+            }
+            FolderKind::Emulator { id } => self.set_path_in_config(id, Some(p)),
+            FolderKind::AlreadyAdded => {}
+        }
+        self.save_config()?;
+        Ok(kind)
+    }
+
+    pub fn remove_path(&mut self, p: &Path) -> Result<(), EngineError> {
+        self.config.rom_dirs.retain(|d| d != p);
+        self.config.emulator_dirs.retain(|d| d != p);
+        self.save_config()
+    }
+
+    fn set_path_in_config(&mut self, id: &str, path: Option<PathBuf>) {
+        if let Some(c) = self.config.custom_emulators.get_mut(id) {
+            if let Some(p) = path {
+                c.path = p;
+            }
+            return;
+        }
+        self.config.emulators.entry(id.to_owned()).or_default().path = path;
+    }
+
+    /// Sets (or clears, to detect it again) the executable of an emulator.
+    pub fn set_emulator_path(
+        &mut self,
+        id: &str,
+        path: Option<PathBuf>,
+    ) -> Result<(), EngineError> {
+        if self.adapter(id).is_none() {
+            return Err(EngineError::UnknownEmulator(id.into()));
+        }
+        if let Some(p) = &path {
+            if !p.is_file() {
+                return Err(EngineError::NotAFile(p.clone()));
+            }
+        }
+        self.set_path_in_config(id, path);
+        self.save_config()
+    }
+
+    /// Adds an emulator chosen by the user. When the executable belongs to
+    /// an emulator the launcher knows, that emulator is used instead (with
+    /// its automatic optimisation). Returns the emulator id.
+    pub fn add_custom_emulator(
+        &mut self,
+        path: PathBuf,
+        name: String,
+        systems: Vec<SystemId>,
+        args: Vec<String>,
+    ) -> Result<String, EngineError> {
+        if !path.is_file() {
+            return Err(EngineError::NotAFile(path));
+        }
+        if let Some(FolderKind::Emulator { id }) = self.classify(&path) {
+            self.set_path_in_config(&id, Some(path));
+            self.save_config()?;
+            return Ok(id);
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_else(|| "emulator".into());
+        let slug: String = stem
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        let mut id = format!("custom-{slug}");
+        let mut n = 2;
+        while self.config.custom_emulators.contains_key(&id) {
+            id = format!("custom-{slug}-{n}");
+            n += 1;
+        }
+        self.config.custom_emulators.insert(
+            id.clone(),
+            CustomEmulator {
+                name,
+                path,
+                args,
+                systems,
+            },
+        );
+        self.save_config()?;
+        Ok(id)
+    }
+
+    pub fn update_custom_emulator(
+        &mut self,
+        id: &str,
+        c: CustomEmulator,
+    ) -> Result<(), EngineError> {
+        if !self.config.custom_emulators.contains_key(id) {
+            return Err(EngineError::UnknownEmulator(id.into()));
+        }
+        self.config.custom_emulators.insert(id.into(), c);
+        self.save_config()
+    }
+
+    pub fn remove_custom_emulator(&mut self, id: &str) -> Result<(), EngineError> {
+        self.config.custom_emulators.remove(id);
+        self.config.system_emulator.retain(|_, e| e != id);
+        self.save_config()
+    }
+
+    /// Chooses the emulator of a system; `None` lets the launcher pick.
+    pub fn set_system_emulator(
+        &mut self,
+        system: SystemId,
+        id: Option<String>,
+    ) -> Result<(), EngineError> {
+        match id {
+            Some(id) => {
+                let ok = self
+                    .adapter(&id)
+                    .is_some_and(|a| a.systems().contains(&system));
+                if !ok {
+                    return Err(EngineError::UnknownEmulator(id));
+                }
+                self.config.system_emulator.insert(system, id);
+            }
+            None => {
+                self.config.system_emulator.remove(&system);
+            }
+        }
+        self.save_config()
     }
 
     /// Hardware report, measured once and cached in `hardware.json`.
@@ -142,6 +549,20 @@ impl Engine {
         )
     }
 
+    /// System-level optimisations for this machine.
+    fn tweaks(&mut self) -> SystemTweaks {
+        if !self.config.perf.system_tweaks {
+            return SystemTweaks::default();
+        }
+        let hw = self.hardware(false);
+        let has = |k: GpuKind| hw.gpus.iter().any(|g| g.kind == k);
+        SystemTweaks {
+            high_priority: true,
+            // Only useful when Windows could pick the integrated GPU.
+            prefer_discrete_gpu: has(GpuKind::Discrete) && has(GpuKind::Integrated),
+        }
+    }
+
     pub fn games(&self) -> Vec<Game> {
         let mut games = cl_library::scan(&self.config.rom_dirs);
         cl_library::Favorites::load(&self.paths.root.join("favorites.json")).apply(&mut games);
@@ -156,11 +577,32 @@ impl Engine {
         Ok(on)
     }
 
+    /// Emulators able to run a system, preferred first.
+    fn candidates(&self, system: SystemId) -> Vec<Box<dyn EmulatorAdapter>> {
+        let mut all: Vec<Box<dyn EmulatorAdapter>> = self
+            .adapters()
+            .into_iter()
+            .filter(|a| a.systems().contains(&system))
+            .collect();
+        let pref = cl_adapters::preferred_emulators(system);
+        all.sort_by_key(|a| pref.iter().position(|p| *p == a.id()).unwrap_or(pref.len()));
+        all
+    }
+
+    /// Emulator used for a system: the user's choice, otherwise the first
+    /// installed emulator in the order of preference.
     pub fn emulator_id_for(&self, system: SystemId) -> String {
-        self.config
-            .system_emulator
-            .get(&system)
-            .cloned()
+        if let Some(id) = self.config.system_emulator.get(&system) {
+            if self.adapter(id).is_some() {
+                return id.clone();
+            }
+        }
+        let candidates = self.candidates(system);
+        candidates
+            .iter()
+            .find(|a| self.locate(a.as_ref()).1.is_some())
+            .or(candidates.first())
+            .map(|a| a.id().to_owned())
             .unwrap_or_else(|| cl_adapters::default_emulator(system).to_owned())
     }
 
@@ -168,14 +610,28 @@ impl Engine {
         ManagedEmulator::new(&self.paths.emulators_dir(), id)
     }
 
-    pub fn find_emulator(&self, id: &str) -> Result<FoundEmulator, EngineError> {
-        let adapter =
-            cl_adapters::by_id(id).ok_or_else(|| EngineError::UnknownEmulator(id.into()))?;
+    fn locate(&self, adapter: &dyn EmulatorAdapter) -> (EmulatorConfig, Option<PathBuf>) {
+        let id = adapter.id();
+        if let Some(c) = self.config.custom_emulators.get(id) {
+            let cfg = EmulatorConfig {
+                path: Some(c.path.clone()),
+                ..self.config.emulator(id)
+            };
+            return (cfg, c.path.is_file().then(|| c.path.clone()));
+        }
         let cfg = self.config.emulator(id);
         let managed = (cfg.mode == EmulatorMode::Managed)
             .then(|| self.managed(id).active_dir())
             .flatten();
-        let exe = adapter.find_executable(&cfg, managed.as_deref());
+        let exe = self.with_index(|idx| adapter.find_executable(&cfg, managed.as_deref(), idx));
+        (cfg, exe)
+    }
+
+    pub fn find_emulator(&self, id: &str) -> Result<FoundEmulator, EngineError> {
+        let adapter = self
+            .adapter(id)
+            .ok_or_else(|| EngineError::UnknownEmulator(id.into()))?;
+        let (cfg, exe) = self.locate(adapter.as_ref());
         Ok((adapter, cfg, exe))
     }
 
@@ -185,18 +641,121 @@ impl Engine {
             .into_iter()
             .map(|(system, list)| {
                 let emulator = self.emulator_id_for(system);
-                let emulator_found = self
-                    .find_emulator(&emulator)
-                    .map(|(_, _, exe)| exe.is_some())
-                    .unwrap_or(false);
+                let (name, found) = match self.find_emulator(&emulator) {
+                    Ok((a, _, exe)) => (a.name().to_owned(), exe.is_some()),
+                    Err(_) => (emulator.clone(), false),
+                };
                 SystemEntry {
                     info: system.info(),
                     games: list.len(),
                     emulator,
-                    emulator_found,
+                    emulator_name: name,
+                    emulator_found: found,
                 }
             })
             .collect()
+    }
+
+    fn watch_file(&self, id: &str) -> PathBuf {
+        self.paths.generated_dir().join(format!("{id}-watch.json"))
+    }
+
+    /// Every emulator with its state, for the settings screen.
+    pub fn emulators_status(&self) -> Vec<EmulatorStatus> {
+        let user_ids: BTreeSet<&str> = self.user_profiles.iter().map(|p| p.id.as_str()).collect();
+        self.adapters()
+            .iter()
+            .map(|a| {
+                let id = a.id().to_owned();
+                let (cfg, exe) = self.locate(a.as_ref());
+                let custom = self.config.custom_emulators.contains_key(&id);
+                let mut user_settings: BTreeSet<String> =
+                    SettingsWatch::load(&self.watch_file(&id)).user_changed;
+                user_settings.extend(cfg.locked_keys.iter().cloned());
+                EmulatorStatus {
+                    name: a.name().to_owned(),
+                    custom,
+                    user_profile: user_ids.contains(id.as_str()),
+                    systems: a.systems().to_vec(),
+                    license: a.license().to_owned(),
+                    homepage: a.homepage().to_owned(),
+                    mode: cfg.mode,
+                    configured_path: if custom {
+                        Some(self.config.custom_emulators[&id].path.clone())
+                    } else {
+                        cfg.path.clone()
+                    },
+                    found: exe.is_some(),
+                    path: exe,
+                    tunes_settings: a.tunes_settings(),
+                    user_settings: user_settings.into_iter().collect(),
+                    id,
+                }
+            })
+            .collect()
+    }
+
+    /// Emulator choice per system (systems with games first).
+    pub fn system_choices(&self, games: &[Game]) -> Vec<SystemChoice> {
+        let grouped = cl_library::group_by_system(games);
+        let mut out: Vec<SystemChoice> = SystemId::ALL
+            .into_iter()
+            .map(|system| {
+                let options = self
+                    .candidates(system)
+                    .iter()
+                    .map(|a| EmulatorOption {
+                        id: a.id().to_owned(),
+                        name: a.name().to_owned(),
+                        found: self.locate(a.as_ref()).1.is_some(),
+                    })
+                    .collect();
+                SystemChoice {
+                    info: system.info(),
+                    games: grouped.get(&system).map_or(0, Vec::len),
+                    emulator: self.emulator_id_for(system),
+                    automatic: !self.config.system_emulator.contains_key(&system),
+                    options,
+                }
+            })
+            .collect();
+        out.sort_by_key(|c| (c.games == 0, c.info.id));
+        out
+    }
+
+    /// Gives every setting of an emulator back to the automatic
+    /// optimisation: forgets the settings the user changed in it and the
+    /// keys locked in the settings.
+    pub fn reset_emulator_tuning(&mut self, id: &str) -> Result<(), EngineError> {
+        let mut w = SettingsWatch::load(&self.watch_file(id));
+        w.reset();
+        w.save(&self.watch_file(id))?;
+        cl_adapters::forget_ledger(id, &self.paths.generated_dir());
+        if let Some(cfg) = self.config.emulators.get_mut(id) {
+            cfg.locked_keys.clear();
+        }
+        self.save_config()
+    }
+
+    /// Opens an emulator without a game, so the user can set it up.
+    pub fn open_emulator(&self, id: &str) -> Result<(), EngineError> {
+        let (adapter, _, exe) = self.find_emulator(id)?;
+        let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
+            id: id.into(),
+            emulator: adapter.name().into(),
+        })?;
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(adapter.setup_args());
+        if let Some(dir) = exe.parent() {
+            cmd.current_dir(dir);
+        }
+        cmd.spawn().map_err(|source| {
+            EngineError::Session(cl_session::SessionError::Spawn {
+                program: exe.display().to_string(),
+                source,
+            })
+        })?;
+        Ok(())
     }
 
     fn profiles(&self) -> ProfileStore {
@@ -240,27 +799,113 @@ impl Engine {
         }
     }
 
-    pub fn prepare(&mut self, game: &Game) -> Result<(PreparedLaunch, GameTuning), EngineError> {
+    fn adapter_for_game(&self, game: &Game) -> Result<FoundEmulator, EngineError> {
         let emulator = self.emulator_id_for(game.system);
-        let (adapter, cfg, exe) = self.find_emulator(&emulator)?;
+        if self.adapter(&emulator).is_none() {
+            return Err(EngineError::NoEmulator(game.system.info().name.into()));
+        }
+        self.find_emulator(&emulator)
+    }
+
+    /// What a launch would do, without touching any file (for the interface).
+    pub fn preview(&mut self, game: &Game) -> Result<(PreparedLaunch, GameTuning), EngineError> {
+        let (adapter, _cfg, exe) = self.adapter_for_game(game)?;
         let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
+            id: adapter.id().into(),
             emulator: adapter.name().into(),
         })?;
         let tuning = self.tuning(game, adapter.as_ref());
         let ladder = adapter.quality_ladder(game.system);
         let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
+        let (measure, mut notes) = self.measure_decision(&tuning);
+        let lang = self.config.language.clone();
+        let name = adapter.name().to_owned();
+        if !adapter.tunes_settings() {
+            notes.push(tr(
+                &lang,
+                format!("{name}: its own settings are not known to the launcher; system-level optimisations only."),
+                format!("{name} : ses réglages ne sont pas connus du lanceur, seules les optimisations système s'appliquent."),
+            ));
+        }
+        let user = SettingsWatch::load(&self.watch_file(adapter.id())).user_changed;
+        if !user.is_empty() {
+            let list = user.into_iter().collect::<Vec<_>>().join(", ");
+            notes.push(tr(
+                &lang,
+                format!("Settings you changed in {name} are kept: {list}."),
+                format!("Réglages modifiés par toi dans {name}, conservés : {list}."),
+            ));
+        }
+        Ok((
+            PreparedLaunch {
+                game: game.clone(),
+                emulator: adapter.id().into(),
+                emulator_name: adapter.name().into(),
+                step: tuning.state.current,
+                step_label: step.label.clone(),
+                ladder: ladder.iter().map(|s| s.label.clone()).collect(),
+                measure,
+                tunes_settings: adapter.tunes_settings(),
+                plan: LaunchPlan {
+                    program: exe,
+                    ..Default::default()
+                },
+                notes,
+            },
+            tuning,
+        ))
+    }
 
+    fn measure_decision(&self, tuning: &GameTuning) -> (bool, Vec<String>) {
         let mut notes = Vec::new();
         let mut measure = self.config.perf.auto_tune && !tuning.state.done;
         if measure {
             if let Err(e) =
                 cl_session::capture_tool_available(self.config.perf.presentmon_path.as_deref())
             {
-                notes.push(format!("Automatic optimisation paused: {e}."));
+                notes.push(tr(
+                    &self.config.language,
+                    format!("Smoothness check unavailable ({e}): settings come from the hardware estimate."),
+                    format!("Mesure de fluidité indisponible ({e}) : réglages choisis d'après l'estimation de la machine."),
+                ));
                 measure = false;
             }
         }
+        (measure, notes)
+    }
+
+    /// Prepares a launch: notices settings the user changed in the
+    /// emulator, writes the optimised settings, builds the command.
+    pub fn prepare(&mut self, game: &Game) -> Result<(PreparedLaunch, GameTuning), EngineError> {
+        let (adapter, cfg, exe) = self.adapter_for_game(game)?;
+        let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
+            id: adapter.id().into(),
+            emulator: adapter.name().into(),
+        })?;
+        let tuning = self.tuning(game, adapter.as_ref());
+        let ladder = adapter.quality_ladder(game.system);
+        let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
+        let (measure, mut notes) = self.measure_decision(&tuning);
         let generated = self.paths.generated_dir();
+
+        // Settings changed by hand in the emulator since the last launch.
+        let keys = adapter.managed_keys(game.system);
+        let watch_file = self.watch_file(adapter.id());
+        let mut watch = SettingsWatch::load(&watch_file);
+        if let Some(cur) = adapter.current_values(&exe, cfg.mode, &generated) {
+            let found = watch.detect(&cur, &keys);
+            if !found.is_empty() {
+                let (list, name) = (found.join(", "), adapter.name());
+                notes.push(tr(
+                    &self.config.language,
+                    format!("You changed {list} in {name}: the launcher leaves it alone (Settings › Emulators to undo)."),
+                    format!("Tu as modifié {list} dans {name} : le lanceur n'y touche plus (Réglages › Émulateurs pour annuler)."),
+                ));
+            }
+        }
+        let mut locked: Vec<String> = cfg.locked_keys.clone();
+        locked.extend(watch.user_changed.iter().cloned());
+
         let mut plan = adapter.prepare(&LaunchContext {
             exe: &exe,
             game,
@@ -268,9 +913,23 @@ impl Engine {
             api: tuning.api,
             mode: cfg.mode,
             generated_dir: &generated,
-            locked_keys: &cfg.locked_keys,
+            locked_keys: &locked,
             bios_dir: self.config.bios_dir.as_deref(),
         })?;
+        // The INI ledger may also have noticed a value changed by hand.
+        for k in &plan.settings_report.kept_user_value {
+            if !cfg.locked_keys.contains(k) {
+                watch.user_changed.insert(k.clone());
+            }
+        }
+        if let Some(after) = adapter.current_values(&exe, cfg.mode, &generated) {
+            watch.record(&after, &keys);
+        }
+        if let Err(e) = watch.save(&watch_file) {
+            log::warn!("cannot save {}: {e}", watch_file.display());
+        }
+
+        plan.tweaks = self.tweaks();
         if measure {
             let extra = adapter.measurement_args();
             // Overrides go before the game argument.
@@ -284,10 +943,12 @@ impl Engine {
             PreparedLaunch {
                 game: game.clone(),
                 emulator: adapter.id().into(),
+                emulator_name: adapter.name().into(),
                 step: tuning.state.current,
                 step_label: step.label.clone(),
                 ladder: ladder.iter().map(|s| s.label.clone()).collect(),
                 measure,
+                tunes_settings: adapter.tunes_settings(),
                 plan,
                 notes,
             },
@@ -354,9 +1015,7 @@ impl Engine {
         game: &Game,
         stats: FrameStats,
     ) -> Result<GameTuning, EngineError> {
-        let emulator = self.emulator_id_for(game.system);
-        let adapter =
-            cl_adapters::by_id(&emulator).ok_or(EngineError::UnknownEmulator(emulator))?;
+        let (adapter, _, _) = self.adapter_for_game(game)?;
         let mut tuning = self.tuning(game, adapter.as_ref());
         let v = verdict(&stats);
         tuning.push_run(RunRecord {
@@ -371,9 +1030,7 @@ impl Engine {
 
     /// The user picks a rung by hand: it sticks and the search stops.
     pub fn set_step(&mut self, game: &Game, step: usize) -> Result<GameTuning, EngineError> {
-        let emulator = self.emulator_id_for(game.system);
-        let adapter =
-            cl_adapters::by_id(&emulator).ok_or(EngineError::UnknownEmulator(emulator))?;
+        let (adapter, _, _) = self.adapter_for_game(game)?;
         let mut tuning = self.tuning(game, adapter.as_ref());
         tuning.state.set_by_user(step);
         self.profiles().save(&tuning)?;
@@ -480,5 +1137,170 @@ mod tests {
             engine.prepare(&g),
             Err(EngineError::EmulatorMissing { .. })
         ));
+    }
+
+    fn touch(p: &std::path::Path) {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, b"").unwrap();
+    }
+
+    fn exe(name: &str) -> String {
+        if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_owned()
+        }
+    }
+
+    /// The situation of a RetroBat user who added the emulator folders as
+    /// game folders, because the settings had no other field.
+    #[test]
+    fn retrobat_paths_are_moved_and_emulators_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let rb = dir.path().join("RetroBat");
+        touch(&rb.join("roms/gba/Pokemon.gba"));
+        touch(&rb.join("roms/psx/Game.cue"));
+        let dolphin_name = if cfg!(windows) {
+            "Dolphin.exe"
+        } else {
+            "dolphin-emu"
+        };
+        let mgba_name = if cfg!(windows) { "mGBA.exe" } else { "mgba-qt" };
+        touch(&rb.join("emulators/dolphin-emu").join(dolphin_name));
+        touch(&rb.join("emulators/mgba").join(mgba_name));
+        touch(&rb.join("emulators/pcsx2/resources/x.gz"));
+
+        let data = dir.path().join("data");
+        let mut engine = engine_with_fake_hw(&data);
+        engine.config.rom_dirs = vec![
+            rb.join("roms"),
+            rb.join("emulators"),
+            rb.join("emulators/dolphin-emu"),
+            rb.join("emulators/dolphin-emu").join(dolphin_name),
+        ];
+        engine.save_config().unwrap();
+        let engine = Engine::load(Paths::at(&data)).unwrap();
+        assert_eq!(engine.config.rom_dirs, vec![rb.join("roms")]);
+        assert_eq!(engine.config.emulator_dirs, vec![rb.join("emulators")]);
+        assert_eq!(
+            engine.config.emulator("dolphin").path,
+            Some(rb.join("emulators/dolphin-emu").join(dolphin_name))
+        );
+
+        let games = engine.games();
+        assert_eq!(games.len(), 2);
+        // GBA: mGBA is installed, so it is chosen before RetroArch.
+        assert_eq!(engine.emulator_id_for(SystemId::Gba), "mgba");
+        let systems = engine.systems(&games);
+        let gba = systems.iter().find(|s| s.info.id == SystemId::Gba).unwrap();
+        assert!(gba.emulator_found);
+        // PlayStation: nothing installed, the preferred emulator is shown.
+        assert_eq!(engine.emulator_id_for(SystemId::Psx), "duckstation");
+        let choices = engine.system_choices(&games);
+        assert_eq!(choices[0].games, 1);
+        assert!(choices.iter().all(|c| !c.options.is_empty()));
+    }
+
+    #[test]
+    fn user_change_is_kept_until_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("roms/psx/Game.cue"));
+        let emu = dir.path().join("duck");
+        let duck = emu.join(exe("duckstation-qt"));
+        touch(&duck);
+        let ini = emu.join("settings.ini");
+        std::fs::write(&ini, "[GPU]\nResolutionScale = 1\n").unwrap();
+
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        engine.config.rom_dirs.push(dir.path().join("roms"));
+        engine.config.perf.auto_tune = false;
+        engine
+            .set_emulator_path("duckstation", Some(duck.clone()))
+            .unwrap();
+        let game = engine.games().remove(0);
+
+        let (p, _) = engine.prepare(&game).unwrap();
+        assert_eq!(p.emulator, "duckstation");
+        let written = std::fs::read_to_string(&ini).unwrap();
+        assert!(!written.contains("ResolutionScale = 1\n"), "{written}");
+
+        // The user picks 2x inside DuckStation.
+        let text = std::fs::read_to_string(&ini).unwrap();
+        let line = text
+            .lines()
+            .find(|l| l.starts_with("ResolutionScale"))
+            .unwrap();
+        std::fs::write(&ini, text.replace(line, "ResolutionScale = 2")).unwrap();
+        let (p, _) = engine.prepare(&game).unwrap();
+        assert!(
+            p.notes
+                .iter()
+                .any(|n| n.contains("GPU/ResolutionScale") && !n.is_empty()),
+            "{:?}",
+            p.notes
+        );
+        assert!(std::fs::read_to_string(&ini)
+            .unwrap()
+            .contains("ResolutionScale = 2"));
+        let st = engine.emulators_status();
+        let d = st.iter().find(|e| e.id == "duckstation").unwrap();
+        assert_eq!(d.user_settings, vec!["GPU/ResolutionScale"]);
+        // Still the user's value on the next launch.
+        engine.prepare(&game).unwrap();
+        assert!(std::fs::read_to_string(&ini)
+            .unwrap()
+            .contains("ResolutionScale = 2"));
+
+        // "Re-enable automatic optimisation".
+        engine.reset_emulator_tuning("duckstation").unwrap();
+        engine.prepare(&game).unwrap();
+        assert!(!std::fs::read_to_string(&ini)
+            .unwrap()
+            .contains("ResolutionScale = 2"));
+        assert!(engine
+            .emulators_status()
+            .iter()
+            .all(|e| e.user_settings.is_empty()));
+    }
+
+    #[test]
+    fn custom_emulator_is_used_and_known_ones_are_recognised() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("roms/snes/Game.sfc"));
+        let mine = dir.path().join("bin").join(exe("my-snes-emu"));
+        touch(&mine);
+        let ppsspp_name = if cfg!(windows) {
+            "PPSSPPWindows64.exe"
+        } else {
+            "PPSSPPSDL"
+        };
+        let ppsspp = dir.path().join("ppsspp").join(ppsspp_name);
+        touch(&ppsspp);
+
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        engine.config.rom_dirs.push(dir.path().join("roms"));
+        engine.config.perf.auto_tune = false;
+        let id = engine
+            .add_custom_emulator(mine.clone(), "Mine".into(), vec![SystemId::Snes], vec![])
+            .unwrap();
+        assert!(id.starts_with("custom-"));
+        // A known executable added "as custom" becomes the known emulator.
+        let known = engine
+            .add_custom_emulator(ppsspp.clone(), String::new(), vec![SystemId::Psp], vec![])
+            .unwrap();
+        assert_eq!(known, "ppsspp");
+        assert_eq!(engine.config.emulator("ppsspp").path, Some(ppsspp));
+
+        engine
+            .set_system_emulator(SystemId::Snes, Some(id.clone()))
+            .unwrap();
+        let game = engine.games().remove(0);
+        let (p, _) = engine.prepare(&game).unwrap();
+        assert_eq!(p.emulator, id);
+        assert!(!p.tunes_settings);
+        assert_eq!(p.plan.args, vec![game.path.display().to_string()]);
+        assert!(p.plan.tweaks.high_priority);
+        engine.remove_custom_emulator(&id).unwrap();
+        assert!(engine.config.system_emulator.is_empty());
     }
 }

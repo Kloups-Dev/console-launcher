@@ -8,5 +8,6 @@ pub mod config;
 pub mod ini;
 pub mod model;
 pub mod paths;
+pub mod watch;
 
 pub use model::*;

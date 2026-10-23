@@ -21,6 +21,7 @@ pub enum SystemId {
     Psp,
     GameCube,
     Wii,
+    WiiU,
 }
 
 /// Static description of a system.
@@ -42,7 +43,7 @@ pub struct SystemInfo {
 }
 
 impl SystemId {
-    pub const ALL: [SystemId; 14] = [
+    pub const ALL: [SystemId; 15] = [
         SystemId::Nes,
         SystemId::Snes,
         SystemId::N64,
@@ -57,6 +58,7 @@ impl SystemId {
         SystemId::Psp,
         SystemId::GameCube,
         SystemId::Wii,
+        SystemId::WiiU,
     ];
 
     pub fn info(self) -> SystemInfo {
@@ -153,6 +155,14 @@ impl SystemId {
                 &["iso", "rvz", "wbfs", "wad", "gcz"],
                 8,
             ),
+            WiiU => (
+                "Wii U",
+                "Nintendo",
+                2012,
+                &["wiiu"],
+                &["wud", "wux", "wua", "rpx"],
+                8,
+            ),
         };
         SystemInfo {
             id: self,
@@ -182,6 +192,7 @@ impl SystemId {
             Psp => "psp",
             GameCube => "gamecube",
             Wii => "wii",
+            WiiU => "wiiu",
         }
     }
 

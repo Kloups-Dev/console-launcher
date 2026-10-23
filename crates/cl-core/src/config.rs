@@ -15,7 +15,8 @@ pub enum ConfigError {
     #[error("invalid settings in {path}: {source}")]
     Parse {
         path: PathBuf,
-        source: toml::de::Error,
+        // Boxed: `toml::de::Error` is large and would bloat every `Result`.
+        source: Box<toml::de::Error>,
     },
     #[error("cannot serialise settings: {0}")]
     Serialize(#[from] toml::ser::Error),
@@ -60,11 +61,27 @@ pub struct EmulatorConfig {
     pub locked_keys: Vec<String>,
 }
 
+/// An emulator the launcher has no built-in profile for, added by the user.
+/// It is launched directly and gets the system-level optimisations; its own
+/// settings are tuned only when a profile file describes them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomEmulator {
+    pub name: String,
+    pub path: PathBuf,
+    /// Arguments; `{rom}` is replaced by the game file. Empty means `["{rom}"]`.
+    pub args: Vec<String>,
+    pub systems: Vec<SystemId>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerfConfig {
     /// Automatic optimisation on/off.
     pub auto_tune: bool,
+    /// System-level optimisations applied to every emulator: higher process
+    /// priority, and on Windows the high-performance GPU preference.
+    pub system_tweaks: bool,
     /// Run a real-condition measurement the first time a game is played.
     pub measure_first_launch: bool,
     /// Measurement length in seconds.
@@ -79,6 +96,7 @@ impl Default for PerfConfig {
     fn default() -> Self {
         PerfConfig {
             auto_tune: true,
+            system_tweaks: true,
             measure_first_launch: true,
             capture_seconds: 60,
             capture_delay_seconds: 20,
@@ -93,6 +111,9 @@ pub struct AppConfig {
     /// Folders containing games, organised one sub-folder per system
     /// (`ps2`, `snes`, …). Files directly in the folder are matched by extension.
     pub rom_dirs: Vec<PathBuf>,
+    /// Folders searched for emulator executables (for example the
+    /// `emulators` folder of RetroBat), in addition to the usual places.
+    pub emulator_dirs: Vec<PathBuf>,
     /// Folder where the user keeps BIOS / firmware files they extracted
     /// from their own hardware. Never distributed by the launcher.
     pub bios_dir: Option<PathBuf>,
@@ -102,6 +123,8 @@ pub struct AppConfig {
     pub emulators: BTreeMap<String, EmulatorConfig>,
     /// Which emulator handles which system, when the default is not wanted.
     pub system_emulator: BTreeMap<SystemId, String>,
+    /// Emulators added by the user, keyed by an id (`custom-…`).
+    pub custom_emulators: BTreeMap<String, CustomEmulator>,
     pub perf: PerfConfig,
 }
 
@@ -109,11 +132,13 @@ impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             rom_dirs: Vec::new(),
+            emulator_dirs: Vec::new(),
             bios_dir: None,
             theme: "horizon".into(),
             language: "fr".into(),
             emulators: BTreeMap::new(),
             system_emulator: BTreeMap::new(),
+            custom_emulators: BTreeMap::new(),
             perf: PerfConfig::default(),
         }
     }
@@ -125,7 +150,7 @@ impl AppConfig {
         match std::fs::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|source| ConfigError::Parse {
                 path: path.into(),
-                source,
+                source: Box::new(source),
             }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AppConfig::default()),
             Err(source) => Err(ConfigError::Io {

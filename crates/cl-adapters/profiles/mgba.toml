@@ -1,0 +1,35 @@
+# mGBA — Game Boy, Game Boy Color, Game Boy Advance.
+# Settings are passed for the session only (`-C key=value`); the user's
+# config.ini is only read, to notice settings changed by hand.
+id = "mgba"
+name = "mGBA"
+license = "MPL-2.0"
+homepage = "https://mgba.io"
+systems = ["gba", "gb", "gbc"]
+gpu_bound = false
+args = ["-f", "{rom}"]
+
+[exe]
+windows = ["mGBA.exe"]
+linux = ["mgba-qt", "mgba", "mGBA.AppImage"]
+
+[paths]
+windows = ["{programfiles}/mGBA/mGBA.exe"]
+linux = ["/usr/bin/mgba-qt", "/usr/games/mgba-qt"]
+
+[settings]
+method = "cli"
+cli = ["-C", "{key}={value}"]
+file_section = "ports.qt"
+# Portable install first (config.ini next to the executable), then per user.
+files = ["{exe_dir}/config.ini", "{appdata}/mGBA/config.ini", "{config}/mgba/config.ini"]
+
+# Handheld consoles are light: the only lever is frame skipping, for very
+# slow machines.
+[[ladder]]
+label = "Eco"
+set = { frameskip = "1" }
+
+[[ladder]]
+label = "Standard"
+set = { frameskip = "0" }

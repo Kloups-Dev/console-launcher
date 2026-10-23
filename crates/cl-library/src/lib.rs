@@ -10,8 +10,10 @@
 //!   snes/media/covers/Game B.png   (optional cover)
 //! ```
 //!
-//! A file outside a system folder is accepted only when its extension
-//! belongs to a single system (`.sfc` → SNES, but `.iso` is ambiguous).
+//! A file outside a system folder is accepted only when it sits directly in
+//! the game folder and its extension belongs to a single system (`.sfc` →
+//! SNES, but `.iso` is ambiguous). Emulator, BIOS and save folders are
+//! skipped, so pointing the launcher at a whole RetroBat folder works.
 
 use cl_core::{Game, SystemId};
 use serde::{Deserialize, Serialize};
@@ -20,6 +22,37 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 const MAX_DEPTH: usize = 4;
+
+/// Folders that never contain games (emulators, firmware, saves, media…).
+const SKIPPED_DIRS: [&str; 22] = [
+    "media",
+    "images",
+    "videos",
+    "manuals",
+    "emulators",
+    "emulator",
+    "bios",
+    "saves",
+    "savestates",
+    "states",
+    "system",
+    "cores",
+    "shaders",
+    "cheats",
+    "screenshots",
+    "themes",
+    "config",
+    "configs",
+    "resources",
+    "plugins",
+    "downloaded_images",
+    "downloaded_videos",
+];
+
+fn skipped_dir(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with('.') || SKIPPED_DIRS.contains(&n.as_str())
+}
 const COVER_EXTS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
 
 /// Stable identifier (FNV-1a 64-bit) so favourites and profiles survive rescans.
@@ -63,9 +96,12 @@ fn ext_of(p: &Path) -> Option<String> {
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
 }
 
+/// System given by a folder name in the first two levels
+/// (`snes/game.sfc` or `roms/snes/game.sfc`).
 fn system_from_folders(rel: &Path) -> Option<SystemId> {
     rel.parent()?
         .components()
+        .take(2)
         .filter_map(|c| c.as_os_str().to_str())
         .find_map(SystemId::from_str_loose)
 }
@@ -102,10 +138,8 @@ pub fn scan(rom_dirs: &[PathBuf]) -> Vec<Game> {
             .max_depth(MAX_DEPTH)
             .into_iter()
             .filter_entry(|e| {
-                let n = e.file_name().to_string_lossy().to_ascii_lowercase();
                 e.depth() == 0
-                    || !(e.file_type().is_dir()
-                        && (n == "media" || n == "images" || n.starts_with('.')))
+                    || !(e.file_type().is_dir() && skipped_dir(&e.file_name().to_string_lossy()))
             })
             .filter_map(Result::ok)
             .filter(|e| e.file_type().is_file())
@@ -126,10 +160,12 @@ pub fn scan(rom_dirs: &[PathBuf]) -> Vec<Game> {
             let system = match system_from_folders(rel) {
                 Some(s) if s.info().extensions.contains(&ext.as_str()) => s,
                 Some(_) => continue,
-                None => match system_from_extension(&ext) {
+                // Loose files only directly in the folder.
+                None if rel.components().count() == 1 => match system_from_extension(&ext) {
                     Some(s) => s,
                     None => continue,
                 },
+                None => continue,
             };
             if ext != "m3u" && path.parent().is_some_and(|p| m3u_dirs.contains(p)) {
                 continue;
@@ -239,6 +275,11 @@ mod tests {
         touch(&r.join("psx/Multi/Multi (Disc 2).cue"));
         touch(&r.join("psx/Multi/Multi.m3u"));
 
+        // Not games: emulator files, deep loose files.
+        touch(&r.join("emulators/pcsx2/resources/a.gz"));
+        touch(&r.join("emulators/ppsspp/assets/psp/b.iso"));
+        touch(&r.join("misc/deep/c.gba"));
+
         let games = scan(&[r.to_path_buf()]);
         let names: Vec<_> = games.iter().map(|g| (g.system, g.title.as_str())).collect();
         assert_eq!(
@@ -257,6 +298,19 @@ mod tests {
             .as_ref()
             .unwrap()
             .ends_with("media/covers/Game C.png"));
+    }
+
+    #[test]
+    fn whole_retrobat_folder_finds_only_games() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = dir.path();
+        touch(&r.join("roms/gba/Pokemon.gba"));
+        touch(&r.join("roms/ps2/Game.iso"));
+        touch(&r.join("emulators/retroarch/cores/x.gz"));
+        touch(&r.join("bios/scph.bin"));
+        let games = scan(&[r.to_path_buf()]);
+        let names: Vec<_> = games.iter().map(|g| g.title.as_str()).collect();
+        assert_eq!(names, vec!["Pokemon", "Game"]);
     }
 
     #[test]

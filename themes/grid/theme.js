@@ -56,7 +56,11 @@ Launcher.onNav(async (a) => {
   else if (a === "down") move(columns());
   else if (a === "pageLeft") switchSystem(-1);
   else if (a === "pageRight") switchSystem(1);
-  else if (a === "confirm" && games()[sel]) await Launcher.play(games()[sel].id).catch(console.error);
+  else if (a === "confirm" && games()[sel]) {
+    const info = await Launcher.gameInfo(games()[sel].id).catch(() => null);
+    if (info && !info.ready) Launcher.openSettings(info.emulatorId ? { emulator: info.emulatorId } : { page: "systems" });
+    else await Launcher.play(games()[sel].id).catch(console.error);
+  }
   else if (a === "favorite" && games()[sel]) { games()[sel].favorite = await Launcher.toggleFavorite(games()[sel].id); render(); }
   else if (a === "menu" || a === "back") Launcher.openSettings();
 });

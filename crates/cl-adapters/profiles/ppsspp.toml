@@ -1,0 +1,51 @@
+# PPSSPP — PlayStation Portable.
+# Its ppsspp.ini is edited (managed keys only, original file backed up,
+# values changed by hand are kept).
+id = "ppsspp"
+name = "PPSSPP"
+license = "GPL-2.0-or-later"
+homepage = "https://www.ppsspp.org"
+systems = ["psp"]
+args = ["--fullscreen", "--pause-menu-exit", "{rom}"]
+
+[exe]
+windows = ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"]
+linux = ["PPSSPPSDL", "ppsspp", "PPSSPPQt"]
+
+[paths]
+windows = ["{programfiles}/PPSSPP/PPSSPPWindows64.exe"]
+linux = ["/usr/bin/ppsspp", "/usr/games/ppsspp"]
+
+[settings]
+method = "ini"
+# Portable install (memstick folder next to the executable), then per user.
+files = [
+  "{exe_dir}/memstick/PSP/SYSTEM/ppsspp.ini",
+  "{documents}/PPSSPP/PSP/SYSTEM/ppsspp.ini",
+  "{config}/ppsspp/PSP/SYSTEM/ppsspp.ini",
+]
+
+# Rendering resolution multiplier of the 272p screen.
+[[ladder]]
+label = "Native"
+set = { "Graphics/InternalResolution" = "1" }
+
+[[ladder]]
+label = "544p"
+set = { "Graphics/InternalResolution" = "2" }
+
+[[ladder]]
+label = "816p"
+set = { "Graphics/InternalResolution" = "3" }
+
+[[ladder]]
+label = "1080p"
+set = { "Graphics/InternalResolution" = "4" }
+
+[[ladder]]
+label = "1440p"
+set = { "Graphics/InternalResolution" = "6" }
+
+[[ladder]]
+label = "4K"
+set = { "Graphics/InternalResolution" = "8" }

@@ -5,11 +5,38 @@
 //! for external and managed installs alike. Managed installs also get
 //! their own user folder (`--user`), so they stay separate from a copy of
 //! Dolphin the user may have installed.
+//!
+//! The user's INI files are read to notice settings changed by hand in
+//! Dolphin (`GFX.Settings.InternalResolution` → `Config/GFX.ini`,
+//! section `[Settings]`, key `InternalResolution`).
 
 use crate::{exe_stem, step, AdapterError, EmulatorAdapter, LaunchContext, LaunchPlan};
 use cl_core::config::EmulatorMode;
+use cl_core::ini::IniDoc;
 use cl_core::{GraphicsApi, QualityStep, SystemId};
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+const BACKEND_KEY: &str = "Dolphin.Core.GFXBackend";
+
+/// Folder holding Dolphin.ini and GFX.ini for this install.
+fn config_dir(exe: &Path, mode: EmulatorMode, generated_dir: &Path) -> Option<PathBuf> {
+    if mode == EmulatorMode::Managed {
+        return Some(generated_dir.join("dolphin-user").join("Config"));
+    }
+    let exe_dir = exe.parent()?;
+    if exe_dir.join("portable.txt").exists() {
+        return Some(exe_dir.join("User").join("Config"));
+    }
+    [
+        "{appdata}/Dolphin Emulator/Config",
+        "{documents}/Dolphin Emulator/Config",
+        "{config}/dolphin-emu",
+    ]
+    .iter()
+    .filter_map(|t| cl_core::paths::expand(t, None))
+    .find(|d| d.join("Dolphin.ini").is_file() || d.join("GFX.ini").is_file())
+}
 
 pub struct Dolphin;
 
@@ -23,19 +50,19 @@ fn backend(api: GraphicsApi) -> &'static str {
 }
 
 impl EmulatorAdapter for Dolphin {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "dolphin"
     }
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "Dolphin"
     }
-    fn license(&self) -> &'static str {
+    fn license(&self) -> &str {
         "GPL-2.0-or-later"
     }
-    fn homepage(&self) -> &'static str {
+    fn homepage(&self) -> &str {
         "https://dolphin-emu.org"
     }
-    fn systems(&self) -> &'static [SystemId] {
+    fn systems(&self) -> &[SystemId] {
         &[SystemId::GameCube, SystemId::Wii]
     }
     fn apis(&self) -> Vec<GraphicsApi> {
@@ -50,12 +77,13 @@ impl EmulatorAdapter for Dolphin {
             vec![GraphicsApi::Vulkan, GraphicsApi::OpenGl]
         }
     }
-    fn exe_names(&self) -> &'static [&'static str] {
-        if cfg!(windows) {
+    fn exe_names(&self) -> Vec<String> {
+        let names: &[&str] = if cfg!(windows) {
             &["Dolphin.exe"]
         } else {
             &["dolphin-emu"]
-        }
+        };
+        names.iter().map(|s| s.to_string()).collect()
     }
     fn common_paths(&self) -> Vec<PathBuf> {
         if cfg!(windows) {
@@ -94,6 +122,40 @@ impl EmulatorAdapter for Dolphin {
         ]
     }
 
+    fn managed_keys(&self, system: SystemId) -> Vec<String> {
+        let mut keys = crate::ladder_keys(&self.quality_ladder(system));
+        keys.push(BACKEND_KEY.into());
+        keys
+    }
+
+    fn current_values(
+        &self,
+        exe: &Path,
+        mode: EmulatorMode,
+        generated_dir: &Path,
+    ) -> Option<BTreeMap<String, String>> {
+        let dir = config_dir(exe, mode, generated_dir)?;
+        let mut files: BTreeMap<String, IniDoc> = BTreeMap::new();
+        let mut out = BTreeMap::new();
+        for key in self.managed_keys(SystemId::GameCube) {
+            let mut parts = key.splitn(3, '.');
+            let (Some(file), Some(section), Some(name)) =
+                (parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            let doc = files.entry(file.to_owned()).or_insert_with(|| {
+                IniDoc::parse(
+                    &std::fs::read_to_string(dir.join(format!("{file}.ini"))).unwrap_or_default(),
+                )
+            });
+            if let Some(v) = doc.get(section, name) {
+                out.insert(key.clone(), v);
+            }
+        }
+        Some(out)
+    }
+
     /// Dolphin skips duplicate frames by default; measured sessions present
     /// all of them. Key name to confirm on the Dolphin version in use.
     fn measurement_args(&self) -> Vec<String> {
@@ -112,10 +174,14 @@ impl EmulatorAdapter for Dolphin {
             std::fs::create_dir_all(&user)?;
             plan.args.push(format!("--user={}", user.display()));
         }
-        plan.args.push(format!(
-            "--config=Dolphin.Core.GFXBackend={}",
-            backend(ctx.api)
-        ));
+        if ctx.locked_keys.iter().any(|l| l == BACKEND_KEY) {
+            plan.settings_report
+                .kept_user_value
+                .push(BACKEND_KEY.into());
+        } else {
+            plan.args
+                .push(format!("--config={BACKEND_KEY}={}", backend(ctx.api)));
+        }
         plan.args
             .push("--config=Dolphin.Display.Fullscreen=True".into());
         for (k, v) in &ctx.step.settings {
@@ -163,5 +229,23 @@ mod tests {
             .contains(&"--config=Dolphin.Core.GFXBackend=Vulkan".to_string()));
         assert!(!plan.args.iter().any(|a| a.starts_with("--user")));
         assert_eq!(plan.args.last().unwrap(), "--exec=/g/gc/a.rvz");
+    }
+
+    #[test]
+    fn reads_portable_user_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("Dolphin.exe");
+        std::fs::write(&exe, b"").unwrap();
+        std::fs::write(dir.path().join("portable.txt"), b"").unwrap();
+        let cfg = dir.path().join("User/Config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        std::fs::write(cfg.join("GFX.ini"), "[Settings]\nInternalResolution = 4\n").unwrap();
+        std::fs::write(cfg.join("Dolphin.ini"), "[Core]\nGFXBackend = D3D12\n").unwrap();
+        let v = Dolphin
+            .current_values(&exe, EmulatorMode::External, dir.path())
+            .unwrap();
+        assert_eq!(v["GFX.Settings.InternalResolution"], "4");
+        assert_eq!(v[BACKEND_KEY], "D3D12");
+        assert!(!v.contains_key("Dolphin.Core.CPUThread"));
     }
 }

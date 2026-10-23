@@ -1,0 +1,17 @@
+# melonDS — Nintendo DS.
+# Recognised and launched directly. Its settings are not tuned yet (the
+# settings file format changed with version 1.0): only the system-level
+# optimisations and the smoothness check apply.
+id = "melonds"
+name = "melonDS"
+license = "GPL-3.0-or-later"
+homepage = "https://melonds.kuribo64.net"
+systems = ["nds"]
+args = ["-f", "{rom}"]
+
+[exe]
+windows = ["melonDS.exe"]
+linux = ["melonDS", "melonds"]
+
+[paths]
+linux = ["/usr/bin/melonDS"]

@@ -4,10 +4,46 @@
 //! `retroarch.cfg` is never written. The override also disables
 //! `config_save_on_exit` for the session, otherwise RetroArch could save the
 //! appended values into the user's file when the game closes.
+//!
+//! The user's `retroarch.cfg` is read to notice settings changed by hand.
 
 use crate::{exe_stem, step, AdapterError, EmulatorAdapter, LaunchContext, LaunchPlan};
+use cl_core::config::EmulatorMode;
 use cl_core::{GraphicsApi, QualityStep, SystemId};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+const DRIVER_KEY: &str = "video_driver";
+
+/// The user's main configuration file.
+fn user_cfg(exe: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(d) = exe.parent() {
+        candidates.push(d.join("retroarch.cfg"));
+    }
+    for t in [
+        "{config}/retroarch/retroarch.cfg",
+        "{home}/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg",
+        "{appdata}/RetroArch/retroarch.cfg",
+    ] {
+        candidates.extend(cl_core::paths::expand(t, None));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Reads `key = "value"` lines.
+pub fn parse_cfg(text: &str) -> BTreeMap<String, String> {
+    text.lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            if l.starts_with('#') {
+                return None;
+            }
+            let (k, v) = l.split_once('=')?;
+            Some((k.trim().to_owned(), v.trim().trim_matches('"').to_owned()))
+        })
+        .collect()
+}
 
 pub struct RetroArch;
 
@@ -24,7 +60,7 @@ pub fn default_core(system: SystemId) -> Option<&'static str> {
         MasterSystem | MegaDrive => "genesis_plus_gx",
         Psx => "mednafen_psx_hw",
         Psp => "ppsspp",
-        Ps2 | GameCube | Wii => return None,
+        Ps2 | GameCube | Wii | WiiU => return None,
     })
 }
 
@@ -73,19 +109,19 @@ fn video_driver(api: GraphicsApi) -> &'static str {
 }
 
 impl EmulatorAdapter for RetroArch {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "retroarch"
     }
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "RetroArch"
     }
-    fn license(&self) -> &'static str {
+    fn license(&self) -> &str {
         "GPL-3.0-or-later"
     }
-    fn homepage(&self) -> &'static str {
+    fn homepage(&self) -> &str {
         "https://www.retroarch.com"
     }
-    fn systems(&self) -> &'static [SystemId] {
+    fn systems(&self) -> &[SystemId] {
         use SystemId::*;
         &[
             Nes,
@@ -108,12 +144,13 @@ impl EmulatorAdapter for RetroArch {
             vec![GraphicsApi::Vulkan, GraphicsApi::OpenGl]
         }
     }
-    fn exe_names(&self) -> &'static [&'static str] {
-        if cfg!(windows) {
+    fn exe_names(&self) -> Vec<String> {
+        let names: &[&str] = if cfg!(windows) {
             &["retroarch.exe"]
         } else {
             &["retroarch", "RetroArch-Linux-x86_64.AppImage"]
-        }
+        };
+        names.iter().map(|s| s.to_string()).collect()
     }
     fn common_paths(&self) -> Vec<PathBuf> {
         if cfg!(windows) {
@@ -131,6 +168,23 @@ impl EmulatorAdapter for RetroArch {
 
     fn gpu_bound_ladder(&self) -> bool {
         false
+    }
+
+    fn managed_keys(&self, system: SystemId) -> Vec<String> {
+        let mut keys = crate::ladder_keys(&self.quality_ladder(system));
+        keys.push(DRIVER_KEY.into());
+        keys
+    }
+
+    fn current_values(
+        &self,
+        exe: &Path,
+        _mode: EmulatorMode,
+        _generated_dir: &Path,
+    ) -> Option<BTreeMap<String, String>> {
+        let all = parse_cfg(&std::fs::read_to_string(user_cfg(exe)?).ok()?);
+        let keys = self.managed_keys(SystemId::Snes);
+        Some(all.into_iter().filter(|(k, _)| keys.contains(k)).collect())
     }
 
     /// For retro systems the GPU is rarely the limit, so the ladder trades
@@ -199,8 +253,12 @@ impl EmulatorAdapter for RetroArch {
             "config_save_on_exit = \"false\"".into(),
             "video_fullscreen = \"true\"".into(),
             "pause_nonactive = \"false\"".into(),
-            format!("video_driver = \"{}\"", video_driver(ctx.api)),
         ];
+        if ctx.locked_keys.iter().any(|l| l == DRIVER_KEY) {
+            plan.settings_report.kept_user_value.push(DRIVER_KEY.into());
+        } else {
+            lines.push(format!("{DRIVER_KEY} = \"{}\"", video_driver(ctx.api)));
+        }
         if let Some(bios) = ctx.bios_dir {
             lines.push(format!("system_directory = \"{}\"", bios.display()));
         }
@@ -238,7 +296,6 @@ impl EmulatorAdapter for RetroArch {
 mod tests {
     use super::*;
     use crate::testutil::game;
-    use cl_core::config::EmulatorMode;
 
     #[test]
     fn writes_override_and_never_touches_user_config() {
@@ -276,6 +333,24 @@ mod tests {
             plan.settings_report.kept_user_value,
             vec!["run_ahead_frames"]
         );
+    }
+
+    #[test]
+    fn reads_user_cfg_next_to_the_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        std::fs::write(&exe, b"").unwrap();
+        std::fs::write(
+            dir.path().join("retroarch.cfg"),
+            "# comment\nvideo_driver = \"d3d11\"\nrun_ahead_enabled = \"true\"\nmenu_driver = \"ozone\"\n",
+        )
+        .unwrap();
+        let v = RetroArch
+            .current_values(&exe, EmulatorMode::External, dir.path())
+            .unwrap();
+        assert_eq!(v["video_driver"], "d3d11");
+        assert_eq!(v["run_ahead_enabled"], "true");
+        assert!(!v.contains_key("menu_driver"));
     }
 
     #[test]

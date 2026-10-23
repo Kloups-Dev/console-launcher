@@ -4,8 +4,8 @@
 
 const fr = (navigator.language || "fr").toLowerCase().startsWith("fr");
 const T = fr
-  ? { games: "jeux", play: "Jouer", back: "Retour", fav: "Favori", menu: "Menu", noGames: "Aucun jeu trouvé.<br>Ouvre le menu (Tab / Start) pour ajouter un dossier de jeux.", missing: "émulateur introuvable", running: "Partie en cours…", runningHint: "Le lanceur revient quand l'émulateur se ferme.", measured: "Mesure de fluidité", settled: "Réglage trouvé", tuning: "Optimisation en cours", slow: "Machine en dessous du nécessaire" }
-  : { games: "games", play: "Play", back: "Back", fav: "Favourite", menu: "Menu", noGames: "No game found.<br>Open the menu (Tab / Start) to add a game folder.", missing: "emulator not found", running: "Game running…", runningHint: "The launcher comes back when the emulator closes.", measured: "Smoothness check", settled: "Settings found", tuning: "Optimising", slow: "Machine below requirements" };
+  ? { games: "jeux", play: "Jouer", back: "Retour", fav: "Favori", menu: "Menu", noGames: "Aucun jeu trouvé.<br>Ouvre le menu (Tab / Start) pour ajouter un dossier de jeux.", missing: "émulateur introuvable", running: "Partie en cours…", runningHint: "Le lanceur revient quand l'émulateur se ferme.", measured: "Mesure de fluidité", settled: "Réglage trouvé", tuning: "Optimisation en cours", slow: "Machine en dessous du nécessaire", fix: "A : choisir l'émulateur", systemOnly: "Optimisations système" }
+  : { games: "games", play: "Play", back: "Back", fav: "Favourite", menu: "Menu", noGames: "No game found.<br>Open the menu (Tab / Start) to add a game folder.", missing: "emulator not found", running: "Game running…", runningHint: "The launcher comes back when the emulator closes.", measured: "Smoothness check", settled: "Settings found", tuning: "Optimising", slow: "Machine below requirements", fix: "A: choose the emulator", systemOnly: "System optimisations" };
 
 const $ = (id) => document.getElementById(id);
 const esc = Launcher.escapeHtml;
@@ -18,6 +18,7 @@ const state = {
   game: {}, // selected game index per system id
   focus: "systems",
   infoToken: 0,
+  info: null, // gameInfo of the selected game
 };
 
 async function loadLibrary() {
@@ -40,7 +41,7 @@ function renderSystems() {
       <div class="hz-sys ${i === state.sys ? "current" : ""}" style="--sys:${MAKER[s.info.manufacturer] || "var(--accent)"}">
         <div class="bar"></div>
         <div class="name">${esc(s.info.name)}</div>
-        <div class="meta">${s.games} ${T.games}${s.emulator_found ? "" : ` · <span class="warn">${T.missing}</span>`}</div>
+        <div class="meta">${s.games} ${T.games} · ${s.emulator_found ? esc(s.emulator_name) : `<span class="warn">${T.missing}</span>`}</div>
       </div>`)
     .join("");
   const cur = nav.children[state.sys];
@@ -80,20 +81,23 @@ async function renderDetail() {
   box.innerHTML = `${cover}<div class="hz-title">${esc(g.title)}</div><div class="hz-chips" id="hz-chips"></div><ul class="hz-notes" id="hz-notes"></ul>`;
 
   // Emulator and quality info: fetched after a short pause so scrolling stays smooth.
+  state.info = null;
   const token = ++state.infoToken;
   await new Promise((r) => setTimeout(r, 140));
   if (token !== state.infoToken) return;
   const info = await Launcher.gameInfo(g.id).catch((e) => ({ ready: false, error: String(e) }));
   if (token !== state.infoToken) return;
+  state.info = info;
   const chips = $("hz-chips");
   const notes = $("hz-notes");
   if (!info.ready) {
-    chips.innerHTML = `<span class="hz-chip warn">${esc(info.error || T.missing)}</span>`;
+    chips.innerHTML = `<span class="hz-chip warn">${esc(info.error || T.missing)}</span>` +
+      (info.code === "emulator_missing" || info.code === "no_emulator" ? `<span class="hz-chip">${T.fix}</span>` : "");
     return;
   }
   chips.innerHTML = [
     `<span class="hz-chip">${esc(info.emulator)}</span>`,
-    `<span class="hz-chip accent">${esc(info.stepLabel)}</span>`,
+    info.tunesSettings ? `<span class="hz-chip accent">${esc(info.stepLabel)}</span>` : `<span class="hz-chip">${T.systemOnly}</span>`,
     info.belowRequirements
       ? `<span class="hz-chip warn">${T.slow}</span>`
       : `<span class="hz-chip">${info.settled ? T.settled : T.tuning}</span>`,
@@ -137,6 +141,10 @@ function moveGame(d) {
 async function play() {
   const g = currentGame();
   if (!g) return;
+  // Emulator missing: go straight to the place where it is chosen.
+  if (state.info && !state.info.ready) {
+    return Launcher.openSettings(state.info.emulatorId ? { emulator: state.info.emulatorId } : { page: "systems" });
+  }
   try {
     await Launcher.play(g.id);
   } catch (e) {

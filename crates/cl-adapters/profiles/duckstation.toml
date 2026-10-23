@@ -1,0 +1,60 @@
+# DuckStation — PlayStation.
+# Its settings.ini is edited (managed keys only, original file backed up,
+# values changed by hand are kept).
+id = "duckstation"
+name = "DuckStation"
+license = "CC-BY-NC-ND-4.0"
+homepage = "https://www.duckstation.org"
+systems = ["psx"]
+args = ["-batch", "-fullscreen", "--", "{rom}"]
+
+[exe]
+windows = ["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt.exe"]
+linux = ["duckstation-qt", "DuckStation-x64.AppImage", "DuckStation.AppImage"]
+
+[paths]
+windows = ["{programfiles}/DuckStation/duckstation-qt-x64-ReleaseLTCG.exe"]
+linux = ["/usr/bin/duckstation-qt"]
+
+[settings]
+method = "ini"
+# Portable install (settings.ini next to the executable), then the per-user
+# folders used by recent and older versions.
+files = [
+  "{exe_dir}/settings.ini",
+  "{localappdata}/DuckStation/settings.ini",
+  "{documents}/DuckStation/settings.ini",
+  "{data}/duckstation/settings.ini",
+]
+
+[settings.api]
+key = "GPU/Renderer"
+vulkan = "Vulkan"
+d3d12 = "D3D12"
+d3d11 = "D3D11"
+opengl = "OpenGL"
+
+# Internal resolution multiplier of the 240p output.
+[[ladder]]
+label = "Native"
+set = { "GPU/ResolutionScale" = "1" }
+
+[[ladder]]
+label = "480p"
+set = { "GPU/ResolutionScale" = "2" }
+
+[[ladder]]
+label = "720p"
+set = { "GPU/ResolutionScale" = "3" }
+
+[[ladder]]
+label = "1080p"
+set = { "GPU/ResolutionScale" = "5" }
+
+[[ladder]]
+label = "1440p"
+set = { "GPU/ResolutionScale" = "6" }
+
+[[ladder]]
+label = "4K"
+set = { "GPU/ResolutionScale" = "9" }

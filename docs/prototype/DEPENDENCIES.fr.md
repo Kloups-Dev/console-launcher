@@ -19,6 +19,7 @@ Tout est open source. Rien n'est propriétaire ni payant. Versions relevées dan
 | [walkdir](https://github.com/BurntSushi/walkdir) | 2.5 | MIT / Unlicense | Parcours des dossiers de jeux |
 | [directories](https://github.com/dirs-dev/directories-rs) | 6 | MIT / Apache-2.0 | Dossiers standard par utilisateur |
 | [clap](https://github.com/clap-rs/clap) | 4.6 | MIT / Apache-2.0 | Ligne de commande de `clctl` |
+| [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2 | MIT / Apache-2.0 | Sélecteur natif de fichiers et de dossiers |
 | thiserror, anyhow, log, env_logger | — | MIT / Apache-2.0 | Erreurs et journaux |
 | tempfile *(tests seulement)* | 3 | MIT / Apache-2.0 | Dossiers temporaires dans les tests |
 
@@ -47,7 +48,7 @@ Pour créer les installateurs : `cargo install tauri-cli --version "^2" --locked
 | Outil | Licence | Système | Utilisation |
 |---|---|---|---|
 | [MangoHud](https://github.com/flightlessmango/MangoHud) | MIT | Linux | Enregistre le temps de chaque image pendant la partie. À installer avec le gestionnaire de paquets |
-| [PresentMon](https://github.com/GameTechDev/PresentMon) | MIT | Windows | Même rôle. Indiquer son chemin dans `perf.presentmon_path`. Nécessite les droits administrateur ou le groupe « Utilisateurs du journal de performances » |
+| [PresentMon](https://github.com/GameTechDev/PresentMon) | MIT | Windows | Même rôle. Le choisir dans Réglages › Mesure de fluidité (ou `perf.presentmon_path`). Nécessite les droits administrateur ou le groupe « Utilisateurs du journal de performances » |
 
 Sans ces outils, les jeux se lancent normalement avec le réglage estimé. Seule la mesure automatique est mise en pause, et le lanceur le signale.
 
@@ -58,7 +59,14 @@ Sans ces outils, les jeux se lancent normalement avec le réglage estimé. Seule
 | [RetroArch](https://www.retroarch.com) | GPL-3.0 | NES, SNES, N64, Game Boy, GBA, DS, Master System, Mega Drive, PlayStation, PSP |
 | [Dolphin](https://dolphin-emu.org) | GPL-2.0-or-later | GameCube, Wii |
 | [PCSX2](https://pcsx2.net) | GPL-3.0-or-later | PlayStation 2 |
+| [mGBA](https://mgba.io) | MPL-2.0 | Game Boy, Game Boy Color, GBA |
+| [DuckStation](https://www.duckstation.org) | CC-BY-NC-ND-4.0 (*) | PlayStation |
+| [PPSSPP](https://www.ppsspp.org) | GPL-2.0-or-later | PSP |
+| [melonDS](https://melonds.kuribo64.net) | GPL-3.0-or-later | Nintendo DS |
+| [Cemu](https://cemu.info) | MPL-2.0 | Wii U |
 
 Cores RetroArch utilisés par défaut : Mesen (GPL-3.0), Snes9x\*, Mupen64Plus-Next (GPL-2.0), Gambatte (GPL-2.0), mGBA (MPL-2.0), melonDS DS (GPL-3.0), Genesis Plus GX\*, Beetle PSX HW (GPL-2.0), PPSSPP (GPL-2.0).
+
+(\*) Les versions récentes de DuckStation interdisent l'usage commercial et la redistribution de copies modifiées. Le lanceur ne fait que démarrer la copie installée par l'utilisateur.
 
 \* Snes9x et Genesis Plus GX ont des licences qui **interdisent l'usage commercial**. Ce n'est pas un problème tant que le lanceur ne les redistribue pas, ce qui est le cas : l'utilisateur les installe depuis RetroArch.

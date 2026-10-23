@@ -4,10 +4,10 @@
 mod gamepad;
 mod themes;
 
-use cl_core::config::AppConfig;
+use cl_core::config::{AppConfig, CustomEmulator};
 use cl_core::paths::Paths;
-use cl_core::Game;
-use cl_engine::Engine;
+use cl_core::{Game, SystemId};
+use cl_engine::{Engine, EngineError};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +25,11 @@ type CmdResult<T> = Result<T, String>;
 
 fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+/// Engine errors in the interface language.
+fn eng_err(engine: &Engine) -> impl Fn(EngineError) -> String + '_ {
+    move |e| e.localized(&engine.config.language)
 }
 
 #[derive(Serialize)]
@@ -55,10 +60,12 @@ fn get_library(state: State<AppState>) -> CmdResult<Library> {
 fn game_info(state: State<AppState>, id: String) -> CmdResult<Value> {
     let mut engine = state.engine.lock().map_err(err)?;
     let game = find_game(&engine, &id)?;
-    match engine.prepare(&game) {
+    match engine.preview(&game) {
         Ok((p, t)) => Ok(serde_json::json!({
             "ready": true,
-            "emulator": p.emulator,
+            "emulator": p.emulator_name,
+            "emulatorId": p.emulator,
+            "tunesSettings": p.tunes_settings,
             "step": p.step,
             "stepLabel": p.step_label,
             "ladder": p.ladder,
@@ -67,7 +74,18 @@ fn game_info(state: State<AppState>, id: String) -> CmdResult<Value> {
             "belowRequirements": t.state.below_requirements,
             "notes": p.notes,
         })),
-        Err(e) => Ok(serde_json::json!({ "ready": false, "error": e.to_string() })),
+        Err(e) => {
+            let emulator = match &e {
+                EngineError::EmulatorMissing { id, .. } => Some(id.clone()),
+                _ => None,
+            };
+            Ok(serde_json::json!({
+                "ready": false,
+                "code": e.code(),
+                "emulatorId": emulator,
+                "error": e.localized(&engine.config.language),
+            }))
+        }
     }
 }
 
@@ -97,7 +115,8 @@ async fn play(
         tauri::async_runtime::spawn_blocking(move || -> CmdResult<cl_engine::PlayReport> {
             let mut engine = Engine::load(paths).map_err(err)?;
             let game = find_game(&engine, &id)?;
-            engine.play(&game).map_err(err)
+            let lang = engine.config.language.clone();
+            engine.play(&game).map_err(|e| e.localized(&lang))
         })
         .await
         .map_err(err)
@@ -145,6 +164,158 @@ fn save_settings(state: State<AppState>, settings: AppConfig) -> CmdResult<()> {
     let mut engine = state.engine.lock().map_err(err)?;
     engine.config = settings;
     engine.save_config().map_err(err)
+}
+
+/// Everything the settings screen shows.
+#[tauri::command]
+fn settings_overview(state: State<AppState>) -> CmdResult<Value> {
+    let engine = state.engine.lock().map_err(err)?;
+    let games = engine.games();
+    let capture = cl_session::capture_tool_available(engine.config.perf.presentmon_path.as_deref());
+    Ok(serde_json::json!({
+        "config": engine.config,
+        "emulators": engine.emulators_status(),
+        "systems": engine.system_choices(&games),
+        "emulatorDirsSearched": engine.emulator_search_dirs(),
+        "capture": { "available": capture.is_ok(), "detail": capture.unwrap_or_else(|e| e) },
+        "profileErrors": engine.profile_errors,
+        "dataDir": state.paths.root,
+        "windows": cfg!(windows),
+    }))
+}
+
+#[tauri::command]
+fn set_system_emulator(
+    state: State<AppState>,
+    system: SystemId,
+    id: Option<String>,
+) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.set_system_emulator(system, id);
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn set_emulator_path(state: State<AppState>, id: String, path: Option<String>) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.set_emulator_path(&id, path.map(Into::into));
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn add_custom_emulator(
+    state: State<AppState>,
+    path: String,
+    name: String,
+    systems: Vec<SystemId>,
+    args: Vec<String>,
+) -> CmdResult<String> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.add_custom_emulator(path.into(), name, systems, args);
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn update_custom_emulator(
+    state: State<AppState>,
+    id: String,
+    emulator: CustomEmulator,
+) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.update_custom_emulator(&id, emulator);
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn remove_custom_emulator(state: State<AppState>, id: String) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.remove_custom_emulator(&id);
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn reset_emulator_tuning(state: State<AppState>, id: String) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.reset_emulator_tuning(&id);
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn open_emulator(state: State<AppState>, id: String) -> CmdResult<()> {
+    let engine = state.engine.lock().map_err(err)?;
+    engine.open_emulator(&id).map_err(eng_err(&engine))
+}
+
+/// Adds a folder or an executable where it belongs (games, emulators).
+#[tauri::command]
+fn add_path(state: State<AppState>, path: String) -> CmdResult<cl_engine::FolderKind> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.add_path(path.into());
+    r.map_err(eng_err(&engine))
+}
+
+#[tauri::command]
+fn remove_path(state: State<AppState>, path: String) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    let r = engine.remove_path(std::path::Path::new(&path));
+    r.map_err(eng_err(&engine))
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+struct PerfUpdate {
+    auto_tune: Option<bool>,
+    system_tweaks: Option<bool>,
+    /// Empty string clears the path.
+    presentmon_path: Option<String>,
+    language: Option<String>,
+}
+
+#[tauri::command]
+fn update_preferences(state: State<AppState>, update: PerfUpdate) -> CmdResult<()> {
+    let mut engine = state.engine.lock().map_err(err)?;
+    if let Some(v) = update.auto_tune {
+        engine.config.perf.auto_tune = v;
+    }
+    if let Some(v) = update.system_tweaks {
+        engine.config.perf.system_tweaks = v;
+    }
+    if let Some(p) = update.presentmon_path {
+        engine.config.perf.presentmon_path = (!p.is_empty()).then(|| p.into());
+    }
+    if let Some(l) = update.language {
+        engine.config.language = l;
+    }
+    engine.save_config().map_err(err)
+}
+
+/// Native file / folder picker. `kind`: "folder", "file" or "exe".
+#[tauri::command]
+async fn pick_path(
+    app: AppHandle,
+    kind: String,
+    title: Option<String>,
+) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut d = app.dialog().file();
+        if let Some(t) = title {
+            d = d.set_title(t);
+        }
+        if kind == "exe" && cfg!(windows) {
+            d = d.add_filter("Programme / Program", &["exe"]);
+        }
+        let picked = if kind == "folder" {
+            d.blocking_pick_folder()
+        } else {
+            d.blocking_pick_file()
+        };
+        picked
+            .and_then(|p| p.into_path().ok())
+            .map(|p| p.display().to_string())
+    })
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -212,6 +383,7 @@ pub fn run() {
     let pad_pause = session_running.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             paths,
             themes_dir,
@@ -230,6 +402,18 @@ pub fn run() {
             set_quality,
             get_settings,
             save_settings,
+            settings_overview,
+            set_system_emulator,
+            set_emulator_path,
+            add_custom_emulator,
+            update_custom_emulator,
+            remove_custom_emulator,
+            reset_emulator_tuning,
+            open_emulator,
+            add_path,
+            remove_path,
+            update_preferences,
+            pick_path,
             hardware,
             list_themes,
             load_theme,
