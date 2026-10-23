@@ -22,6 +22,6 @@
 .DS_Store
 Thumbs.db
 
-# Rust / Tauri build output
+# Build output
 /target/
-/app/src-tauri/gen/
+/build-qt/

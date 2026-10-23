@@ -1,14 +1,15 @@
-// Grid (Qt Quick version) — minimal template: cover grid with console tabs.
+// Grid — minimal template: cover grid with console tabs.
 
 import QtQuick
 import QtQuick.Window
+import ConsoleLauncher
 
 Window {
     id: win
     visible: true
     width: 1280; height: 720
     color: "#0e1016"
-    title: "Console Launcher — Qt Quick"
+    title: "Console Launcher"
 
     readonly property color accent: "#5ad1a0"
     readonly property color muted: "#8a93a6"
@@ -32,13 +33,31 @@ Window {
     function move(d) { if (games.length) sel = Math.max(0, Math.min(games.length - 1, sel + d)); }
     function switchSystem(d) { if (systems.length) { sys = (sys + d + systems.length) % systems.length; sel = 0; } }
 
-    onGameChanged: { info = null; if (game) Launcher.requestInfo(game.id); }
+    readonly property bool fr: Launcher.language.indexOf("fr") === 0
+
+    onGameChanged: { info = null; pendingPlay = false; if (game) Launcher.requestInfo(game.id); }
+
+    property bool pendingPlay: false
+
+    function play() {
+        if (!game) return;
+        if (!info) { pendingPlay = true; return; }
+        pendingPlay = false;
+        if (info && !info.ready)
+            Launcher.openSettings(info.emulatorId ? { emulator: info.emulatorId } : { page: "systems" });
+        else
+            Launcher.play(game.id);
+    }
 
     Connections {
         target: Launcher
         function onLibraryChanged() { rebuild(); }
         function onFavoriteChanged() { rebuild(); }
-        function onGameInfoReady(id, data) { if (game && game.id === id) info = data; }
+        function onGameInfoReady(id, data) {
+            if (!game || game.id !== id) return;
+            info = data;
+            if (pendingPlay) play();
+        }
         function onNav(a) {
             if (a === "left") move(-1);
             else if (a === "right") move(1);
@@ -46,10 +65,11 @@ Window {
             else if (a === "down") move(columns);
             else if (a === "pageLeft") switchSystem(-1);
             else if (a === "pageRight") switchSystem(1);
-            else if (a === "confirm" && game) Launcher.play(game.id);
+            else if (a === "confirm") play();
             else if (a === "favorite" && game) Launcher.toggleFavorite(game.id);
-            else if (a === "menu") { const l = Launcher.themes; Launcher.setTheme(l[(l.indexOf(Launcher.theme) + 1) % l.length]); }
+            else if (a === "menu" || a === "back") Launcher.openSettings();
         }
+        function onSettingsOpenChanged() { if (!Launcher.settingsOpen && game) Launcher.requestInfo(game.id); }
     }
     Component.onCompleted: rebuild()
 
@@ -93,7 +113,7 @@ Window {
 
     Text {
         x: 28; anchors.bottom: parent.bottom; anchors.bottomMargin: 18
-        text: win.game ? win.game.title + "  ·  " + win.systems[win.sys].info.name : "Aucun jeu / No games — add a folder from the Horizon theme menu"
+        text: win.game ? win.game.title + "  ·  " + win.systems[win.sys].info.name : (win.fr ? "Aucun jeu. Menu (Tab / Start) → Dossiers." : "No games. Menu (Tab / Start) → Folders.")
         color: "#eef1f7"; font.pixelSize: 14
     }
     Text {
@@ -101,4 +121,6 @@ Window {
         text: !win.info ? "" : (win.info.ready ? win.info.emulator + " · " + win.info.stepLabel : win.info.error)
         color: win.muted; font.pixelSize: 14
     }
+
+    SettingsPanel { anchors.fill: parent }
 }

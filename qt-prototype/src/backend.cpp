@@ -4,31 +4,36 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
+#include <QJSEngine>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
-#include <QSettings>
+#include <QThreadPool>
 #include <QUrl>
 
 Backend::Backend(QObject *parent) : QObject(parent) {
-    QSettings s;
-    m_theme = s.value("theme", "horizon").toString();
+    // Settings are read once, synchronously, before the theme is loaded.
+    const Engine::Answer a = m_engine.call("config");
+    if (a.ok)
+        applyConfig(a.result.toMap());
+    else
+        setError(a.error);
     if (!themes().contains(m_theme))
-        m_theme = "horizon";
+        m_theme = QStringLiteral("horizon");
 }
 
-QString Backend::clctlPath() const {
-    const QByteArray env = qgetenv("CLCTL");
-    if (!env.isEmpty())
-        return QString::fromLocal8Bit(env);
-#ifdef Q_OS_WIN
-    return QCoreApplication::applicationDirPath() + "/clctl.exe";
-#else
-    return QCoreApplication::applicationDirPath() + "/clctl";
-#endif
+void Backend::applyConfig(const QVariantMap &config) {
+    const QString lang = config.value("language").toString();
+    if (!lang.isEmpty() && lang != m_language) {
+        m_language = lang;
+        Q_EMIT languageChanged();
+    }
+    const QString theme = config.value("theme").toString();
+    if (!theme.isEmpty())
+        m_theme = theme;
 }
+
+QString Backend::version() const { return QStringLiteral(CL_VERSION); }
 
 QString Backend::themesDir() const {
     const QByteArray env = qgetenv("CONSOLE_LAUNCHER_QT_THEMES");
@@ -47,22 +52,23 @@ QStringList Backend::themes() const {
 }
 
 QQuickWindow *Backend::window() const {
-    if (!m_engine || m_engine->rootObjects().isEmpty())
+    if (!m_qml || m_qml->rootObjects().isEmpty())
         return nullptr;
-    return qobject_cast<QQuickWindow *>(m_engine->rootObjects().first());
+    return qobject_cast<QQuickWindow *>(m_qml->rootObjects().first());
 }
 
 void Backend::loadTheme() {
-    if (!m_engine)
+    if (!m_qml)
         return;
     // Drop the previous theme's window before loading the new one.
-    const auto roots = m_engine->rootObjects();
+    const auto roots = m_qml->rootObjects();
     for (QObject *o : roots)
         o->deleteLater();
-    m_engine->clearComponentCache();
+    m_qml->clearComponentCache();
+    m_settingsOpen = false;
     const QString file = themesDir() + "/" + m_theme + "/Main.qml";
-    m_engine->load(QUrl::fromLocalFile(file));
-    if (m_engine->rootObjects().isEmpty())
+    m_qml->load(QUrl::fromLocalFile(file));
+    if (m_qml->rootObjects().isEmpty())
         setError(tr("Theme '%1' could not be loaded").arg(m_theme));
     Q_EMIT themeChanged();
 }
@@ -71,57 +77,78 @@ void Backend::setTheme(const QString &name) {
     if (!themes().contains(name) || name == m_theme)
         return;
     m_theme = name;
-    QSettings().setValue("theme", name);
+    async("update_preferences", QVariantMap{{"theme", name}}, [](const Engine::Answer &) {});
     QMetaObject::invokeMethod(this, [this] { loadTheme(); }, Qt::QueuedConnection);
 }
 
 void Backend::setError(const QString &e) {
+    if (e == m_error)
+        return;
     m_error = e;
     Q_EMIT errorChanged();
 }
 
-void Backend::runClctl(const QStringList &args,
-                       std::function<void(bool, const QByteArray &)> done) {
-    auto *p = new QProcess(this);
-    p->setProgram(clctlPath());
-    p->setArguments(args);
-    p->setProcessChannelMode(QProcess::SeparateChannels);
-    connect(p, &QProcess::finished, this, [p, done](int code, QProcess::ExitStatus st) {
-        const bool ok = st == QProcess::NormalExit && code == 0;
-        done(ok, ok ? p->readAllStandardOutput() : p->readAllStandardError().trimmed());
-        p->deleteLater();
+void Backend::async(const QString &method, const QVariant &params,
+                    std::function<void(const Engine::Answer &)> done) {
+    QPointer<Backend> self(this);
+    const Engine *engine = &m_engine;
+    QThreadPool::globalInstance()->start([self, engine, method, params, done] {
+        Engine::Answer a = engine->call(method, params);
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(
+            self.data(), [self, a, done] { if (self) done(a); }, Qt::QueuedConnection);
     });
-    connect(p, &QProcess::errorOccurred, this, [this, p, done](QProcess::ProcessError e) {
-        if (e == QProcess::FailedToStart) {
-            done(false, QStringLiteral("clctl not found: %1").arg(p->program()).toUtf8());
-            p->deleteLater();
+}
+
+void Backend::request(const QString &method, const QJSValue &params, const QJSValue &callback) {
+    const QVariant p = params.isUndefined() || params.isNull() ? QVariant() : params.toVariant();
+    QJSValue cb = callback;
+    async(method, p, [this, method, cb](const Engine::Answer &a) mutable {
+        // Settings that change what the theme shows.
+        if (a.ok && method == "settings_overview")
+            applyConfig(a.result.toMap().value("config").toMap());
+        else if (a.ok && (method == "update_preferences" || method == "reload")) {
+            const Engine::Answer c = m_engine.call("config");
+            if (c.ok)
+                applyConfig(c.result.toMap());
+        }
+        if (cb.isCallable()) {
+            QJSEngine *js = qjsEngine(this);
+            if (!js && m_qml)
+                js = m_qml;
+            if (js) {
+                const QJSValue r = cb.call({QJSValue(a.ok), a.ok ? js->toScriptValue(a.result) : QJSValue(a.error)});
+                if (r.isError())
+                    qWarning("%s: %s (%s)", qPrintable(method), qPrintable(r.toString()),
+                             qPrintable(r.property("stack").toString()));
+            }
         }
     });
-    p->start();
+}
+
+QString Backend::localPath(const QUrl &url) const {
+    return url.isLocalFile() ? QDir::toNativeSeparators(url.toLocalFile()) : url.toString();
 }
 
 void Backend::reload() {
-    runClctl({"--json", "scan"}, [this](bool ok, const QByteArray &out) {
-        if (!ok) {
-            setError(QString::fromUtf8(out));
+    async("library", QVariant(), [this](const Engine::Answer &a) {
+        if (!a.ok) {
+            setError(a.error);
             return;
         }
-        // Output: [systems, games]
-        const QJsonArray pair = QJsonDocument::fromJson(out).array();
-        m_systems = pair.at(0).toArray().toVariantList();
-        m_games = pair.at(1).toArray().toVariantList();
+        const QVariantMap lib = a.result.toMap();
+        m_systems = lib.value("systems").toList();
+        m_games = lib.value("games").toList();
         setError(QString());
         Q_EMIT libraryChanged();
     });
 }
 
 void Backend::requestInfo(const QString &gameId) {
-    runClctl({"info", gameId}, [this, gameId](bool ok, const QByteArray &out) {
-        QVariantMap info;
-        if (ok)
-            info = QJsonDocument::fromJson(out).object().toVariantMap();
-        else
-            info = {{"ready", false}, {"error", QString::fromUtf8(out)}};
+    async("game_info", QVariantMap{{"id", gameId}}, [this, gameId](const Engine::Answer &a) {
+        QVariantMap info = a.ok ? a.result.toMap()
+                                : QVariantMap{{"ready", false}, {"error", a.error}};
         Q_EMIT gameInfoReady(gameId, info);
     });
 }
@@ -136,12 +163,8 @@ void Backend::play(const QString &gameId) {
     // (almost) nothing while the game runs.
     if (auto *w = window())
         w->hide();
-    runClctl({"--json", "play", gameId}, [this](bool ok, const QByteArray &out) {
-        QVariantMap report;
-        if (ok)
-            report = QJsonDocument::fromJson(out).object().toVariantMap();
-        else
-            report = {{"error", QString::fromUtf8(out)}};
+    async("play", QVariantMap{{"id", gameId}}, [this](const Engine::Answer &a) {
+        QVariantMap report = a.ok ? a.result.toMap() : QVariantMap{{"error", a.error}};
         m_running = false;
         Q_EMIT runningChanged();
         Q_EMIT sessionActive(false);
@@ -150,15 +173,17 @@ void Backend::play(const QString &gameId) {
             w->raise();
             w->requestActivate();
         }
+        if (!a.ok)
+            setError(a.error);
         Q_EMIT sessionEnded(report);
     });
 }
 
 void Backend::toggleFavorite(const QString &gameId) {
-    runClctl({"--json", "favorite", gameId}, [this, gameId](bool ok, const QByteArray &out) {
-        if (!ok)
+    async("toggle_favorite", QVariantMap{{"id", gameId}}, [this, gameId](const Engine::Answer &a) {
+        if (!a.ok)
             return;
-        const bool on = out.trimmed() == "true";
+        const bool on = a.result.toBool();
         for (QVariant &g : m_games) {
             QVariantMap m = g.toMap();
             if (m.value("id").toString() == gameId) {
@@ -171,11 +196,25 @@ void Backend::toggleFavorite(const QString &gameId) {
 }
 
 void Backend::addRomDir(const QString &path) {
-    runClctl({"add-roms", path}, [this](bool ok, const QByteArray &out) {
-        if (!ok)
-            setError(QString::fromUtf8(out));
+    async("add_path", QVariantMap{{"path", path}}, [this](const Engine::Answer &a) {
+        if (!a.ok)
+            setError(a.error);
         reload();
     });
+}
+
+void Backend::openSettings(const QVariant &target) {
+    QVariant t = target;
+    if (t.userType() == qMetaTypeId<QJSValue>())
+        t = t.value<QJSValue>().toVariant();
+    Q_EMIT settingsRequested(t);
+}
+
+void Backend::setSettingsOpen(bool open) {
+    if (open == m_settingsOpen)
+        return;
+    m_settingsOpen = open;
+    Q_EMIT settingsOpenChanged();
 }
 
 void Backend::toggleFullscreen() {
@@ -195,7 +234,11 @@ QString Backend::asset(const QString &relPath) const {
 }
 
 void Backend::emitNav(const QString &action) {
-    if (!m_running)
+    if (m_running)
+        return;
+    if (m_settingsOpen)
+        Q_EMIT settingsNav(action);
+    else
         Q_EMIT nav(action);
 }
 

@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("Launcher", &backend);
-    backend.setEngine(&engine);
+    backend.setQmlEngine(&engine);
     backend.loadTheme();
     backend.reload();
     return app.exec();

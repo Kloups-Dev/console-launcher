@@ -4,12 +4,15 @@
 //! times, and waits for the emulator to close so the interface can come
 //! back to the front.
 //!
-//! Frame capture tools (not shipped, detected on the machine):
-//! - Linux: MangoHud (MIT), run as a wrapper with logging enabled and the
-//!   overlay hidden.
-//! - Windows: PresentMon (MIT), started next to the emulator and watching
-//!   its process name. PresentMon needs administrator rights or membership
-//!   of the "Performance Log Users" group.
+//! Frame capture tools (both MIT, shipped with the launcher packages in
+//! `tools/` next to the executable; a copy installed on the machine is used
+//! when present):
+//! - Linux: MangoHud, logging enabled and overlay hidden. An installed
+//!   `mangohud` is run as a wrapper; the bundled copy is injected directly
+//!   (`LD_PRELOAD` for OpenGL, an implicit Vulkan layer for Vulkan).
+//! - Windows: PresentMon, started next to the emulator and watching its
+//!   process name. PresentMon needs administrator rights or membership of
+//!   the "Performance Log Users" group ([`request_capture_permission`]).
 
 use cl_adapters::LaunchPlan;
 use serde::Serialize;
@@ -105,21 +108,190 @@ fn which(name: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// Whether a capture tool is available on this machine.
-pub fn capture_tool_available(presentmon: Option<&Path>) -> Result<String, String> {
+/// Folder of the tools shipped with the launcher: `CONSOLE_LAUNCHER_TOOLS`,
+/// or `tools/` next to the running executable.
+pub fn bundled_tools_dir() -> Option<PathBuf> {
+    if let Some(d) = std::env::var_os("CONSOLE_LAUNCHER_TOOLS") {
+        return Some(PathBuf::from(d));
+    }
+    let exe = std::env::current_exe().ok()?;
+    Some(exe.parent()?.join("tools"))
+}
+
+/// The frame capture tool that will be used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaptureTool {
+    PresentMon(PathBuf),
+    /// `mangohud` wrapper installed on the machine.
+    MangoHudWrapper(PathBuf),
+    /// Folder holding the bundled `libMangoHud*.so` files.
+    MangoHudBundled(PathBuf),
+}
+
+impl CaptureTool {
+    pub fn path(&self) -> &Path {
+        match self {
+            CaptureTool::PresentMon(p)
+            | CaptureTool::MangoHudWrapper(p)
+            | CaptureTool::MangoHudBundled(p) => p,
+        }
+    }
+    /// True when the tool comes with the launcher.
+    pub fn bundled(&self) -> bool {
+        let Some(dir) = bundled_tools_dir() else {
+            return false;
+        };
+        self.path().starts_with(dir)
+    }
+}
+
+fn bundled_presentmon() -> Option<PathBuf> {
+    let dir = bundled_tools_dir()?.join("presentmon");
+    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .is_some_and(|n| n.starts_with("presentmon") && n.ends_with(".exe"))
+        })
+        .collect();
+    found.sort();
+    found.pop()
+}
+
+fn bundled_mangohud() -> Option<PathBuf> {
+    let dir = bundled_tools_dir()?.join("mangohud");
+    (dir.join("libMangoHud_shim.so").is_file() && dir.join("libMangoHud.so").is_file())
+        .then_some(dir)
+}
+
+/// Finds the capture tool: the path chosen in the settings (Windows), a
+/// copy installed on the machine, then the copy shipped with the launcher.
+pub fn find_capture_tool(presentmon: Option<&Path>) -> Result<CaptureTool, String> {
     if cfg!(windows) {
-        match presentmon
+        presentmon
+            .filter(|p| p.is_file())
             .map(Path::to_path_buf)
             .or_else(|| which("PresentMon.exe"))
-        {
-            Some(p) if p.is_file() => Ok(p.display().to_string()),
-            _ => Err("PresentMon not found: set perf.presentmon_path in config.toml".into()),
-        }
+            .or_else(bundled_presentmon)
+            .map(CaptureTool::PresentMon)
+            .ok_or_else(|| "PresentMon not found".into())
     } else {
         which("mangohud")
-            .map(|p| p.display().to_string())
-            .ok_or_else(|| "MangoHud not installed".into())
+            .map(CaptureTool::MangoHudWrapper)
+            .or_else(|| bundled_mangohud().map(CaptureTool::MangoHudBundled))
+            .ok_or_else(|| "MangoHud not found".into())
     }
+}
+
+/// Whether frames can be measured: a tool is present and, on Windows, the
+/// user may record performance events. Returns the tool path, or why not.
+pub fn capture_tool_available(presentmon: Option<&Path>) -> Result<String, String> {
+    let tool = find_capture_tool(presentmon)?;
+    if !capture_permission_granted() {
+        return Err("PresentMon needs the permission to record performance events".into());
+    }
+    Ok(tool.path().display().to_string())
+}
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW_FLAG: u32 = 0x0800_0000;
+
+/// Windows: true when the process runs elevated or the user belongs to
+/// "Performance Log Users" (SID S-1-5-32-559). Always true elsewhere.
+pub fn capture_permission_granted() -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = Command::new("whoami")
+            .args(["/groups", "/fo", "csv", "/nh"])
+            .creation_flags(CREATE_NO_WINDOW_FLAG)
+            .stderr(Stdio::null())
+            .output();
+        match out {
+            Ok(o) => {
+                let text = String::from_utf8_lossy(&o.stdout);
+                // S-1-16-12288: high integrity level (elevated process).
+                text.contains("S-1-5-32-559") || text.contains("S-1-16-12288")
+            }
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
+/// Windows: adds the current user to "Performance Log Users", after a
+/// Windows administrator prompt. Takes effect at the next sign-in.
+pub fn request_capture_permission() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let user = match (std::env::var("USERDOMAIN"), std::env::var("USERNAME")) {
+            (Ok(d), Ok(u)) if !d.is_empty() => format!("{d}\\{u}"),
+            (_, Ok(u)) => u,
+            _ => return Err("unknown user name".into()),
+        };
+        let user = user.replace('\'', "''");
+        // The inner command runs elevated; quotes are doubled for PowerShell.
+        let inner = format!(
+            "Add-LocalGroupMember -SID S-1-5-32-559 -Member '{user}' -ErrorAction SilentlyContinue"
+        );
+        let outer = format!(
+            "$p = Start-Process powershell -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-Command',\"{inner}\"; exit $p.ExitCode"
+        );
+        let status = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &outer,
+            ])
+            .creation_flags(CREATE_NO_WINDOW_FLAG)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("the administrator prompt was refused".into())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(())
+    }
+}
+
+/// Vulkan layer description pointing at the bundled MangoHud library.
+fn write_mangohud_layer(lib_dir: &Path) -> std::io::Result<PathBuf> {
+    let dir = std::env::temp_dir().join("console-launcher-mangohud-layer");
+    std::fs::create_dir_all(&dir)?;
+    let json = serde_json::json!({
+        "file_format_version": "1.0.0",
+        "layer": {
+            "name": "VK_LAYER_MANGOHUD_overlay_x86_64",
+            "type": "GLOBAL",
+            "api_version": "1.3.0",
+            "library_path": lib_dir.join("libMangoHud.so"),
+            "implementation_version": "1",
+            "description": "Vulkan Hud Overlay (bundled with Console Launcher)",
+            "functions": {
+                "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion"
+            },
+            "enable_environment": { "MANGOHUD": "1" },
+            "disable_environment": { "DISABLE_MANGOHUD": "1" }
+        }
+    });
+    std::fs::write(
+        dir.join("MangoHud.x86_64.json"),
+        serde_json::to_string_pretty(&json).unwrap_or_default(),
+    )?;
+    Ok(dir)
 }
 
 fn newest_csv(dir: &Path, since: SystemTime) -> Option<PathBuf> {
@@ -139,31 +311,51 @@ fn newest_csv(dir: &Path, since: SystemTime) -> Option<PathBuf> {
         .map(|(_, p)| p)
 }
 
-/// Builds the command for a plan, with MangoHud wrapping on Linux when a
-/// capture is requested. Returned separately so it can be unit-tested.
+/// Builds the command for a plan, with MangoHud on Linux when a capture is
+/// requested. Returned separately so it can be unit-tested.
 pub fn build_command(
     plan: &LaunchPlan,
     capture: Option<&CaptureRequest>,
 ) -> (Command, Option<String>) {
     let mut note = None;
+    let mangohud_config = |c: &CaptureRequest| {
+        format!(
+            "no_display,output_folder={},autostart_log={},log_duration={}",
+            c.dir.display(),
+            c.delay_seconds,
+            c.seconds
+        )
+    };
     let mut cmd = match capture {
-        Some(c) if !cfg!(windows) => match which("mangohud") {
-            Some(mangohud) => {
+        Some(c) if !cfg!(windows) => match find_capture_tool(None) {
+            Ok(CaptureTool::MangoHudWrapper(mangohud)) => {
                 let mut cmd = Command::new(mangohud);
                 cmd.arg(&plan.program);
-                cmd.env(
-                    "MANGOHUD_CONFIG",
-                    format!(
-                        "no_display,output_folder={},autostart_log={},log_duration={}",
-                        c.dir.display(),
-                        c.delay_seconds,
-                        c.seconds
-                    ),
-                );
+                cmd.env("MANGOHUD_CONFIG", mangohud_config(c));
                 cmd
             }
-            None => {
-                note = Some("MangoHud not installed: session not measured".to_string());
+            Ok(CaptureTool::MangoHudBundled(dir)) => {
+                let mut cmd = Command::new(&plan.program);
+                cmd.env("MANGOHUD", "1");
+                cmd.env("MANGOHUD_CONFIG", mangohud_config(c));
+                // OpenGL: the shim loads libMangoHud_opengl.so from its folder.
+                let shim = dir.join("libMangoHud_shim.so").display().to_string();
+                let preload = match std::env::var("LD_PRELOAD") {
+                    Ok(p) if !p.is_empty() => format!("{p}:{shim}"),
+                    _ => shim,
+                };
+                cmd.env("LD_PRELOAD", preload);
+                // Vulkan: implicit layer enabled by MANGOHUD=1.
+                match write_mangohud_layer(&dir) {
+                    Ok(layer_dir) => {
+                        cmd.env("VK_ADD_IMPLICIT_LAYER_PATH", layer_dir);
+                    }
+                    Err(e) => log::warn!("MangoHud Vulkan layer: {e}"),
+                }
+                cmd
+            }
+            _ => {
+                note = Some("MangoHud not found: session not measured".to_string());
                 Command::new(&plan.program)
             }
         },
@@ -183,31 +375,40 @@ pub fn build_command(
 }
 
 fn start_presentmon(plan: &LaunchPlan, c: &CaptureRequest, file: &Path) -> Result<Child, String> {
-    let exe = c
-        .presentmon
-        .clone()
-        .or_else(|| which("PresentMon.exe"))
-        .ok_or("PresentMon not found: session not measured")?;
-    Command::new(exe)
-        .args([
-            "--process_name",
-            &plan.process_name,
-            "--output_file",
-            &file.display().to_string(),
-            "--delay",
-            &c.delay_seconds.to_string(),
-            "--timed",
-            &c.seconds.to_string(),
-            "--terminate_after_timed",
-            "--session_name",
-            "ConsoleLauncher",
-            "--stop_existing_session",
-            "--v1_metrics",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("PresentMon could not start ({e}): session not measured"))
+    let exe = match find_capture_tool(c.presentmon.as_deref()) {
+        Ok(CaptureTool::PresentMon(p)) => p,
+        _ => return Err("PresentMon not found: session not measured".into()),
+    };
+    if !capture_permission_granted() {
+        return Err(
+            "PresentMon has no permission to record: Settings › Smoothness check › Allow".into(),
+        );
+    }
+    let mut cmd = Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW_FLAG);
+    }
+    cmd.args([
+        "--process_name",
+        &plan.process_name,
+        "--output_file",
+        &file.display().to_string(),
+        "--delay",
+        &c.delay_seconds.to_string(),
+        "--timed",
+        &c.seconds.to_string(),
+        "--terminate_after_timed",
+        "--session_name",
+        "ConsoleLauncher",
+        "--stop_existing_session",
+        "--v1_metrics",
+    ])
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .map_err(|e| format!("PresentMon could not start ({e}): session not measured"))
 }
 
 /// Runs the session and blocks until the emulator exits.
@@ -314,6 +515,55 @@ mod tests {
         let r = run(&plan, None).unwrap();
         assert_eq!(r.exit_code, Some(3));
         assert!(r.capture_file.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundled_mangohud_is_injected() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools = dir.path().join("tools/mangohud");
+        std::fs::create_dir_all(&tools).unwrap();
+        for f in [
+            "libMangoHud.so",
+            "libMangoHud_shim.so",
+            "libMangoHud_opengl.so",
+        ] {
+            std::fs::write(tools.join(f), b"").unwrap();
+        }
+        std::env::set_var("CONSOLE_LAUNCHER_TOOLS", dir.path().join("tools"));
+        let plan = LaunchPlan {
+            program: "/bin/true".into(),
+            ..Default::default()
+        };
+        let c = CaptureRequest {
+            dir: dir.path().join("cap"),
+            delay_seconds: 1,
+            seconds: 2,
+            presentmon: None,
+        };
+        if which("mangohud").is_none() {
+            let (cmd, note) = build_command(&plan, Some(&c));
+            assert!(note.is_none());
+            let envs: std::collections::HashMap<_, _> = cmd
+                .get_envs()
+                .map(|(k, v)| {
+                    (
+                        k.to_string_lossy().into_owned(),
+                        v.map(|v| v.to_string_lossy().into_owned()),
+                    )
+                })
+                .collect();
+            assert_eq!(envs["MANGOHUD"].as_deref(), Some("1"));
+            assert!(envs["LD_PRELOAD"]
+                .as_ref()
+                .unwrap()
+                .ends_with("libMangoHud_shim.so"));
+            let layer =
+                std::path::PathBuf::from(envs["VK_ADD_IMPLICIT_LAYER_PATH"].clone().unwrap());
+            let json = std::fs::read_to_string(layer.join("MangoHud.x86_64.json")).unwrap();
+            assert!(json.contains("libMangoHud.so"));
+        }
+        std::env::remove_var("CONSOLE_LAUNCHER_TOOLS");
     }
 
     #[test]

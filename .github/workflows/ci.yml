@@ -5,9 +5,15 @@ on:
     branches: ["**"]
   pull_request:
 
+env:
+  QT_VERSION: "6.8.*"          # latest long-term support series
+  SDL2_VERSION: "2.32.10"
+  PRESENTMON_VERSION: "2.6.0"
+  MANGOHUD_VERSION: "0.8.4"
+
 jobs:
-  build:
-    name: ${{ matrix.os }}
+  engine:
+    name: engine (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -15,76 +21,127 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Linux libraries for the desktop app
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libudev-dev librsvg2-dev libssl-dev pkg-config
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-
       - uses: Swatinem/rust-cache@v2
-
       - name: Format
         run: cargo fmt --all -- --check
-
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
-
       - name: Tests
         run: cargo test --workspace
-
       - name: Command-line tool
         run: cargo run -p cl-cli -- --help
 
-  package:
-    name: package (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: console-launcher-windows-x64
-            exe: .exe
-          - os: ubuntu-24.04
-            artifact: console-launcher-linux-x64
-            exe: ""
-    runs-on: ${{ matrix.os }}
+  windows:
+    name: package (Windows)
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Linux libraries for the desktop app
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libudev-dev librsvg2-dev libssl-dev pkg-config
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
         with:
-          key: release
-
-      # `custom-protocol` embeds the interface in the executable (production mode).
-      - name: Build release binaries
+          key: package
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+      - name: SDL2
+        shell: bash
         run: |
-          cargo build --release -p console-launcher --features tauri/custom-protocol
-          cargo build --release -p cl-cli
-
+          curl -fsSL -o sdl2.zip "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-VC.zip"
+          7z x -y sdl2.zip -o"$RUNNER_TEMP/sdl2" > /dev/null
+          echo "SDL2_ROOT=$RUNNER_TEMP/sdl2/SDL2-${SDL2_VERSION}" >> "$GITHUB_ENV"
+      - name: Build
+        shell: bash
+        run: |
+          cmake -S qt-prototype -B build -G "Visual Studio 17 2022" -A x64 \
+            -DCMAKE_BUILD_TYPE=Release -DSDL2_DIR="$SDL2_ROOT/cmake"
+          cmake --build build --config Release
       - name: Collect files
         shell: bash
         run: |
-          mkdir dist
-          cp "target/release/console-launcher${{ matrix.exe }}" dist/
-          cp "target/release/clctl${{ matrix.exe }}" dist/
-          cp docs/prototype/config.example.toml CHANGELOG.md dist/
-
+          set -e
+          out=dist/ConsoleLauncher
+          mkdir -p "$out/tools/presentmon"
+          cp build/Release/console-launcher-qt.exe build/Release/console_launcher_engine.dll "$out/"
+          cp build/cargo/release/clctl.exe "$out/"
+          cp -r build/Release/themes "$out/themes"
+          cp "$SDL2_ROOT/lib/x64/SDL2.dll" "$out/"
+          windeployqt --release --no-translations --qmldir qt-prototype/themes --qmldir qt-prototype/ui "$out/console-launcher-qt.exe"
+          # Frame measurement tool (MIT), shipped next to the launcher.
+          gh release download "v${PRESENTMON_VERSION}" --repo GameTechDev/PresentMon \
+            --pattern "PresentMon-${PRESENTMON_VERSION}-x64.exe" --dir "$out/tools/presentmon"
+          curl -fsSL -o "$out/tools/presentmon/LICENSE.txt" \
+            "https://raw.githubusercontent.com/GameTechDev/PresentMon/v${PRESENTMON_VERSION}/LICENSE.txt"
+          cp CHANGELOG.md docs/prototype/config.example.toml "$out/"
+          ls -R "$out" | head -80
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: console-launcher-qt-windows-x64
+          path: dist
+
+  linux:
+    name: package (Linux AppImage)
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libgl1-mesa-dev libfuse2 file
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+      - name: Build
+        run: |
+          cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: AppImage
+        run: |
+          set -e
+          app=AppDir/usr/bin
+          mkdir -p "$app/tools/mangohud"
+          cp build/console-launcher-qt build/libconsole_launcher_engine.so build/cargo/release/clctl "$app/"
+          cp -r build/themes "$app/themes"
+          # Frame measurement tool (MIT), shipped with the launcher.
+          gh release download "v${MANGOHUD_VERSION}" --repo flightlessmango/MangoHud --pattern "MangoHud-*.tar.gz" --dir mh
+          tar -xzf mh/MangoHud-*.tar.gz -C mh
+          mkdir mh/pkg && tar -xf mh/MangoHud/MangoHud-package.tar -C mh/pkg
+          find mh/pkg -path '*lib32*' -prune -o -name 'libMangoHud*.so' -print -exec cp {} "$app/tools/mangohud/" \;
+          curl -fsSL -o "$app/tools/mangohud/LICENSE" \
+            "https://raw.githubusercontent.com/flightlessmango/MangoHud/v${MANGOHUD_VERSION}/LICENSE"
+          ls -l "$app/tools/mangohud"
+          test -f "$app/tools/mangohud/libMangoHud_shim.so"
+          curl -fsSL -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export QML_SOURCES_PATHS="$PWD/qt-prototype/themes:$PWD/qt-prototype/ui"
+          export EXTRA_QT_MODULES="svg"
+          export LDAI_OUTPUT=ConsoleLauncher-x86_64.AppImage
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          ./linuxdeploy --appdir AppDir \
+            --executable "$app/console-launcher-qt" \
+            --library "$app/libconsole_launcher_engine.so" \
+            --desktop-file qt-prototype/packaging/console-launcher.desktop \
+            --icon-file qt-prototype/packaging/console-launcher.png \
+            --plugin qt --output appimage
+          mkdir dist && mv ConsoleLauncher-x86_64.AppImage dist/ && cp CHANGELOG.md dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-launcher-qt-linux-x64
           path: dist

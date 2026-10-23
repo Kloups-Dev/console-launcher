@@ -1,9 +1,11 @@
-// Horizon (Qt Quick version) — consoles from left to right, games below.
+// Horizon — consoles from left to right, games below.
 // A theme is a folder with Main.qml whose root is a Window. It receives the
-// `Launcher` object (see qt-prototype/README.*.md) and nothing else.
+// `Launcher` object (see qt-prototype/README.*.md) and can use the built-in
+// components of `import ConsoleLauncher` (the settings panel).
 
 import QtQuick
 import QtQuick.Window
+import ConsoleLauncher
 
 Window {
     id: win
@@ -13,7 +15,7 @@ Window {
     minimumWidth: 800
     minimumHeight: 450
     color: bg
-    title: "Console Launcher — Qt Quick"
+    title: "Console Launcher"
 
     // ---- Look: change these to restyle the theme ----
     readonly property color bg: "#0b0d12"
@@ -24,20 +26,18 @@ Window {
     readonly property var makerColors: ({ "Nintendo": "#e4505a", "Sony": "#4f7cff", "Sega": "#20b3c9" })
     readonly property int pad: 48
 
-    readonly property bool fr: Qt.locale().name.substring(0, 2) === "fr"
+    readonly property bool fr: Launcher.language.indexOf("fr") === 0
     readonly property var t: fr
         ? { games: "jeux", play: "Jouer", back: "Retour", fav: "Favori", menu: "Menu", missing: "émulateur introuvable",
             noGames: "Aucun jeu trouvé.\nOuvre le menu (Tab / Start) pour ajouter un dossier de jeux.",
             running: "Partie en cours…", runningHint: "Le lanceur revient quand l'émulateur se ferme.",
             settled: "Réglage trouvé", tuning: "Optimisation en cours", slow: "Machine en dessous du nécessaire",
-            theme: "Thème", fullscreen: "Plein écran", addDir: "Ajouter ce dossier", dirHint: "Chemin d'un dossier de jeux",
-            quit: "Quitter", close: "Fermer", settings: "Réglages" }
+            fix: "A : choisir l'émulateur", systemOnly: "Optimisations système" }
         : { games: "games", play: "Play", back: "Back", fav: "Favourite", menu: "Menu", missing: "emulator not found",
             noGames: "No game found.\nOpen the menu (Tab / Start) to add a game folder.",
             running: "Game running…", runningHint: "The launcher comes back when the emulator closes.",
             settled: "Settings found", tuning: "Optimising", slow: "Machine below requirements",
-            theme: "Theme", fullscreen: "Fullscreen", addDir: "Add this folder", dirHint: "Path of a game folder",
-            quit: "Quit", close: "Close", settings: "Settings" }
+            fix: "A: choose the emulator", systemOnly: "System optimisations" }
 
     // ---- State ----
     property var systems: []
@@ -46,8 +46,6 @@ Window {
     property var selected: ({})
     property string area: "systems"
     property var info: null
-    property bool menuOpen: false
-    property int menuIndex: 0
 
     readonly property var currentSystem: systems.length ? systems[sys] : null
     readonly property var currentGames: currentSystem ? (bySystem[currentSystem.info.id] || []) : []
@@ -83,8 +81,22 @@ Window {
         setGameIndex(gameIndex + d);
     }
 
+    property bool pendingPlay: false
+
+    function play() {
+        if (!currentGame) return;
+        // Details not loaded yet: act as soon as they arrive.
+        if (!info) { pendingPlay = true; Launcher.requestInfo(currentGame.id); return; }
+        pendingPlay = false;
+        // Emulator missing: go straight to the place where it is chosen.
+        if (info && !info.ready) {
+            Launcher.openSettings(info.emulatorId ? { emulator: info.emulatorId } : { page: "systems" });
+            return;
+        }
+        Launcher.play(currentGame.id);
+    }
+
     function handle(a) {
-        if (menuOpen) return menu.handle(a);
         switch (a) {
         case "left": moveSystem(-1); break;
         case "right": moveSystem(1); break;
@@ -94,15 +106,15 @@ Window {
         case "pageRight": if (area === "games") moveGame(10); else moveSystem(1); break;
         case "confirm":
             if (area === "systems") area = "games";
-            else if (currentGame) Launcher.play(currentGame.id);
+            else play();
             break;
         case "back": if (area === "games") area = "systems"; break;
         case "favorite": if (currentGame) Launcher.toggleFavorite(currentGame.id); break;
-        case "menu": menuOpen = true; menuIndex = 0; break;
+        case "menu": Launcher.openSettings(); break;
         }
     }
 
-    onCurrentGameChanged: { info = null; infoDelay.restart(); }
+    onCurrentGameChanged: { info = null; pendingPlay = false; infoDelay.restart(); }
 
     Timer {
         id: infoDelay
@@ -114,9 +126,14 @@ Window {
         target: Launcher
         function onLibraryChanged() { rebuild(); }
         function onNav(a) { handle(a); }
-        function onGameInfoReady(id, data) { if (currentGame && currentGame.id === id) info = data; }
+        function onGameInfoReady(id, data) {
+            if (!currentGame || currentGame.id !== id) return;
+            info = data;
+            if (pendingPlay) play();
+        }
         function onFavoriteChanged(id, on) { rebuild(); }
         function onSessionEnded(report) { infoDelay.restart(); }
+        function onSettingsOpenChanged() { if (!Launcher.settingsOpen) infoDelay.restart(); }
     }
 
     Component.onCompleted: rebuild()
@@ -177,7 +194,7 @@ Window {
             Text {
                 id: sub
                 x: 20; y: 54
-                text: modelData.games + " " + win.t.games + (modelData.emulator_found ? "" : " · " + win.t.missing)
+                text: modelData.games + " " + win.t.games + " · " + (modelData.emulator_found ? modelData.emulator_name : win.t.missing)
                 color: modelData.emulator_found ? win.muted : "#ff8a65"; font.pixelSize: 12
             }
         }
@@ -265,13 +282,15 @@ Window {
             anchors.top: title.bottom; anchors.topMargin: 12; width: parent.width; spacing: 8
             Repeater {
                 model: !win.info ? [] : (win.info.ready
-                    ? [ { t: win.info.emulator, k: "" }, { t: win.info.stepLabel, k: "accent" },
+                    ? [ { t: win.info.emulator, k: "" },
+                        win.info.tunesSettings ? { t: win.info.stepLabel, k: "accent" } : { t: win.t.systemOnly, k: "" },
                         win.info.belowRequirements ? { t: win.t.slow, k: "warn" } : { t: win.info.settled ? win.t.settled : win.t.tuning, k: "" } ]
-                    : [ { t: win.info.error, k: "warn" } ])
+                    : [ { t: win.info.error, k: "warn" }, { t: win.t.fix, k: "" } ])
                 delegate: Rectangle {
-                    height: 26; radius: 13; width: chipText.implicitWidth + 20
+                    height: chipText.implicitHeight + 8; radius: 13; width: Math.min(chips.width, chipText.implicitWidth + 20)
                     color: modelData.k === "accent" ? win.accent : modelData.k === "warn" ? "#ff8a65" : win.panel
                     Text { id: chipText; anchors.centerIn: parent; text: modelData.t
+                           width: Math.min(implicitWidth, chips.width - 20); wrapMode: Text.Wrap
                            color: modelData.k ? "#111111" : win.muted; font.pixelSize: 13 }
                 }
             }
@@ -310,68 +329,6 @@ Window {
                text: Launcher.lastError; color: win.text; font.pixelSize: 12 }
     }
 
-    // ---- Settings menu ----
-    Rectangle {
-        id: menu
-        visible: win.menuOpen
-        anchors.fill: parent
-        color: Qt.rgba(0.02, 0.03, 0.05, 0.75)
-        readonly property var rows: [
-            { id: "theme", label: win.t.theme, value: Launcher.theme },
-            { id: "fullscreen", label: win.t.fullscreen, value: "F11" },
-            { id: "dir", label: win.t.addDir, value: "+" },
-            { id: "quit", label: win.t.quit, value: "⏻" },
-            { id: "close", label: win.t.close, value: "B" } ]
-        function handle(a) {
-            if (a === "up") win.menuIndex = (win.menuIndex + rows.length - 1) % rows.length;
-            else if (a === "down") win.menuIndex = (win.menuIndex + 1) % rows.length;
-            else if (a === "back" || a === "menu") win.menuOpen = false;
-            else if (a === "confirm") activate(rows[win.menuIndex].id);
-        }
-        function activate(id) {
-            if (id === "theme") {
-                const list = Launcher.themes, i = list.indexOf(Launcher.theme);
-                Launcher.setTheme(list[(i + 1) % list.length]);
-            } else if (id === "fullscreen") Launcher.toggleFullscreen();
-            else if (id === "dir") { if (dirInput.text) Launcher.addRomDir(dirInput.text); else dirInput.forceActiveFocus(); }
-            else if (id === "quit") Launcher.quit();
-            else if (id === "close") win.menuOpen = false;
-        }
-        Rectangle {
-            anchors.centerIn: parent
-            width: Math.min(620, parent.width * 0.9); height: col.implicitHeight + 48; radius: 16
-            color: "#151a24"; border.color: "#2a3244"
-            Column {
-                id: col
-                x: 24; y: 24; width: parent.width - 48; spacing: 6
-                Text { text: win.t.settings; color: win.text; font.pixelSize: 20; font.weight: Font.DemiBold; bottomPadding: 8 }
-                Repeater {
-                    model: menu.rows
-                    Rectangle {
-                        width: col.width; height: 46; radius: 10
-                        color: index === win.menuIndex ? "#232b3d" : "#1b2130"
-                        border.color: index === win.menuIndex ? win.accent : "transparent"
-                        Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: win.text; font.pixelSize: 15 }
-                        Text { anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
-                               text: modelData.value; color: win.text; font.pixelSize: 15; font.bold: true }
-                        MouseArea { anchors.fill: parent; onClicked: { win.menuIndex = index; menu.activate(modelData.id); } }
-                    }
-                }
-                Rectangle {
-                    width: col.width; height: 40; radius: 8; color: "#0b0d12"; border.color: "#2a3244"
-                    TextInput {
-                        id: dirInput
-                        anchors.fill: parent; anchors.margins: 10
-                        color: win.text; font.pixelSize: 14; clip: true
-                        Keys.onEscapePressed: { focus = false; win.contentItem.forceActiveFocus(); }
-                        Keys.onReturnPressed: { Launcher.addRomDir(text); text = ""; focus = false; win.contentItem.forceActiveFocus(); }
-                        Text { visible: !parent.text && !parent.activeFocus; text: win.t.dirHint; color: win.muted; font.pixelSize: 14 }
-                    }
-                }
-            }
-        }
-    }
-
     // ---- Session overlay ----
     Rectangle {
         visible: Launcher.running
@@ -383,4 +340,7 @@ Window {
             Text { anchors.horizontalCenter: parent.horizontalCenter; text: win.t.runningHint; color: win.muted; font.pixelSize: 14 }
         }
     }
+
+    // ---- Built-in settings panel (Start / Tab) ----
+    SettingsPanel { anchors.fill: parent }
 }

@@ -863,10 +863,15 @@ impl Engine {
             if let Err(e) =
                 cl_session::capture_tool_available(self.config.perf.presentmon_path.as_deref())
             {
+                let fr = if e.contains("permission") {
+                    "Mesure de fluidité pas encore autorisée par Windows (Réglages › Mesure de fluidité) : réglages choisis d'après l'estimation de la machine.".to_string()
+                } else {
+                    "Mesure de fluidité indisponible (outil de mesure introuvable) : réglages choisis d'après l'estimation de la machine.".to_string()
+                };
                 notes.push(tr(
                     &self.config.language,
                     format!("Smoothness check unavailable ({e}): settings come from the hardware estimate."),
-                    format!("Mesure de fluidité indisponible ({e}) : réglages choisis d'après l'estimation de la machine."),
+                    fr,
                 ));
                 measure = false;
             }

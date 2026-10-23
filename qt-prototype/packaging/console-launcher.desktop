@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Console Launcher
+Comment=Emulation launcher with automatic optimisation
+Comment[fr]=Lanceur d'émulation avec optimisation automatique
+Exec=console-launcher-qt
+Icon=console-launcher
+Categories=Game;Emulator;
+Terminal=false
