@@ -26,6 +26,7 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 - Atelier fonctionnel : [PR n°4](https://github.com/Kloups-Dev/console-launcher/pull/4), branche `feat/functional-workbench`, proposée sur la branche du premier prototype, pas fusionnée. L'autre prototype Rust/Tauri reste une proposition distincte.
 - Installation Dolphin : [PR n°5](https://github.com/Kloups-Dev/console-launcher/pull/5), branche `feat/dolphin-installation`, proposée sur `feat/functional-workbench`, pas fusionnée.
 - Contrôles GameCube clavier/manette : [PR n°6](https://github.com/Kloups-Dev/console-launcher/pull/6), branche `feat/dolphin-keyboard`, proposée sur `feat/dolphin-installation`, pas fusionnée.
+- Diagnostic persistant : [PR n°7](https://github.com/Kloups-Dev/console-launcher/pull/7), branche `feat/local-diagnostics`, proposée sur `feat/dolphin-keyboard`, pas fusionnée. Le dossier de test fixe est mis à jour.
 - Atelier : C#/.NET 8, WPF pour l'écran de travail ; cœur indépendant de WPF. Listes et boutons pour configurer chaque console, importer des fichiers locaux, préparer la commande, lancer directement, demander une fermeture normale et exporter un diagnostic. Aucun titre fictif ajouté au démarrage.
 - Trois modules : Dolphin (GameCube/Wii), PCSX2 (PS2), RetroArch (systèmes indiqués disponibles, cœur adapté à choisir). Le catalogue de 36 systèmes distingue explicitement les intégrations absentes : présence au catalogue ne signifie pas compatibilité.
 - Limites : installation guidée Dolphin x64 disponible sur sa branche ; autres émulateurs/cœurs/BIOS et contrôles à installer/configurer ; pas de profils automatiques par matériel/jeu ni de correctifs audio/vidéo. Atelier au clavier/souris, retour XInput en partie. Aucune garantie de compatibilité déduite de la présence des fichiers. Pas d'installateur autonome.
@@ -69,6 +70,18 @@ Touches : stick principal aux flèches, stick C avec I/K/J/L ; boutons GameCube 
 
 Le changement sauvegarde le fichier précédent à côté de `Config/GCPadNew.ini`, remplace uniquement GCPad1, conserve les autres joueurs/sections et est sans effet si le même profil est déjà appliqué. Les installations Dolphin externes ne sont pas modifiées. Contrôles Wii inchangés, pas encore d'éditeur de touches. Vérifié : 97 contrôles locaux et rendu WPF ; aucun essai des entrées dans un vrai jeu.
 
+## Journaux et essais en bureau distant
+
+Sur `feat/local-diagnostics`, les journaux sont conservés automatiquement dans `%LOCALAPPDATA%/ConsoleLauncher/logs/launcher.jsonl`, avec quatre fichiers précédents. Rotation à environ 512 Kio par fichier (une entrée peut dépasser ce seuil), messages et sorties d'émulateurs limités. Aucun envoi automatique. Le chemin du profil Windows est réduit dans les messages ; les journaux peuvent toujours contenir des noms de jeux et d'autres chemins locaux.
+
+Sont consignés : version du logiciel, OS/.NET et contexte de rendu WPF ; actions des boutons, préparation, profils/installations et erreurs ; début/fin des processus, codes de sortie, durée, stdout/stderr ; ressources mémoire/CPU brutes toutes les 10 secondes seulement pendant une session. Exceptions UI/runtime/tâches observées par les gestionnaires globaux consignées sans masquer l'exception. Si un journal Dolphin existe, ses derniers 16 K caractères sont repris avec leur date et la mention qu'une session antérieure peut y figurer. Pas de mode Dolphin verbeux forcé.
+
+**État et diagnostic** permet d'exporter l'ensemble, d'ouvrir les fichiers et de tester les entrées pendant 10 secondes dans une zone dédiée. Seuls des compteurs d'appuis/relâchements, clics, mouvements et pertes de focus y sont recueillis ; pas de texte ni de capture globale des touches dans d'autres applications. Cela ne mesure pas les entrées reçues par Dolphin en jeu.
+
+Le bureau distant Windows est détecté automatiquement. Le choix **Je teste depuis un bureau distant / iPad** complète cette détection et est mémorisé. Le dossier fixe local possède un indicateur `remote-input-test.flag` pour activer par défaut le contexte déclaré par l'utilisateur ; la préférence ensuite enregistrée reste prioritaire. Absence d'entrée, perte de focus et manette non transmise sont des observations : elles ne prouvent pas un bug. Les mesures brutes ne déterminent pas automatiquement une mauvaise performance.
+
+Vérifié : 113 contrôles locaux dont rotation, écriture impossible sans casser la session, capture bornée d'un vrai processus de test bruyant avec stderr/code 7 et absence d'entrées distante classée en observation. Compilation et démarrage de la version publiée vérifiés, fichier JSONL réel relu et écran inspecté. La session Windows distante est effectivement détectée sur le PC de développement. Pas d'essai avec jeu/manette physique, ni de comparaison bureau local/iPad ou de mesure FPS/GPU.
+
 ## Passerelle entre fonctionnement et future interface
 
 `ILauncherBackend` expose la bibliothèque, la configuration par console, l'import, le retrait d'entrée, la préparation, le lancement, la demande de fermeture et le diagnostic. Les états publiés sont : disponible, préparation, partie en cours, fermeture demandée, terminé et erreur. La future interface peut appeler ce contrat sans reprendre le code des boutons WPF. Le cœur est testable sans l'écran ; les processus et leurs arguments sont traités séparément.
@@ -110,3 +123,10 @@ La prochaine validation est un essai réel par module avec les jeux et le matér
 - Fait : profils clavier/manette/mixte, activation des installations existantes sans réinstallation, aide des touches, copie des anciens réglages et conservation des autres joueurs. Profil mixte pour les installations neuves.
 - Vérifié : compilation Release sans avertissement, 97 contrôles locaux, rendu WPF inspecté, ZIP Windows publié. Contrôles GitHub visibles dans la PR.
 - Limites : GameCube seulement, touches fixes et pas d'essai dans une partie réelle. Travail Rust/Tauri consulté jusqu'à `fe3c41b`, non modifié.
+
+### 2026-10-23 — Diagnostic local persistant publié
+
+- Code : `ad7d01b`, branche `feat/local-diagnostics`, PR n°7 ouverte sur `feat/dolphin-keyboard` ; pas fusionné sur `main`.
+- Fait : journaux tournants, erreurs et contexte système, sessions/sorties émulateurs, ressources brutes, export et test clavier/souris limité à sa zone ; contexte distant détecté/déclaré, sans qualifier les entrées manquantes de bug.
+- Vérifié : 113 contrôles locaux, compilation Release sans avertissement, rendu et démarrage du dossier fixe, JSONL relu, version de code et session distante confirmées. Contrôles GitHub dans la PR.
+- Limites : pas de capture des entrées Dolphin en jeu, de mode interne Dolphin verbeux forcé, de FPS/GPU ou de comparaison locale/iPad. Les binaires non suivis présents à la racine du dépôt ont été préservés ; seule la version du dossier fixe est actualisée. Travail Rust/Tauri consulté jusqu'à `fe3c41b`, non modifié.
