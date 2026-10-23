@@ -2,109 +2,136 @@
 
 *[Version française](THEMES.fr.md)*
 
-A theme is a folder with 4 files: HTML, CSS, JavaScript and a manifest. It decides **everything** on screen: layout, colours, animations, sounds, menu order. The launcher provides the data (consoles, games, covers, settings) and the controller actions. The theme never needs to know which emulator is used.
+A theme is a folder holding a `Main.qml` file written in QML, Qt Quick's declarative language. It decides **everything** on screen: layout, colours, animations, sounds, menu order. The launcher provides the data (consoles, games, covers, settings) and the controller actions. The theme never needs to know which emulator is used.
 
 Nobody has to create a theme to play: "Horizon" is active by default.
 
 ## Where themes live
 
-`<data folder>/themes/<name>/`. The two templates are copied there on first start and never overwritten afterwards, so they can be edited directly.
+In the `themes` folder next to the executable (`ConsoleLauncher\themes` in the Windows package). Each sub-folder holding a `Main.qml` is a theme.
 
 ```
 themes/my-theme/
-  theme.json    manifest (name, adjustable options)
-  index.html    page structure
-  style.css     look
-  theme.js      behaviour (receives the Launcher object)
-  ...           images, fonts, sounds: anything
+  Main.qml       the theme; its root is a Window
+  ...            images, fonts, sounds, other QML files: anything
 ```
 
-The folder name may only contain letters, digits, `-` and `_`.
+To work from a development folder, set the `CONSOLE_LAUNCHER_QT_THEMES` variable to the folder holding the themes.
 
 ## Starting from a template
 
-1. Copy `themes/grid` (the shortest, about 80 lines of JS) or `themes/horizon` (more complete).
-2. Rename the folder and the `name` field in `theme.json`.
-3. Open the menu (Tab / Start) → Theme, until the new one shows.
-4. Edit, then press **F5** to reload. **F11** toggles fullscreen.
+1. Copy `themes/grid` (the shortest, about 120 lines) or `themes/horizon` (more complete).
+2. Rename the folder.
+3. Open the settings (Tab / Start) → Theme, until the new one shows.
+4. Edit `Main.qml`, then switch theme back and forth to reload it. **F11** toggles fullscreen.
 
-To work straight from a development folder:
+QML errors are printed in the console; the settings stay reachable with Tab.
 
-```bash
-CONSOLE_LAUNCHER_THEMES=/path/to/my-themes cargo run -p console-launcher
-```
+## Minimal theme
 
-JavaScript errors are shown at the bottom of the screen, and the menu stays reachable with Tab to switch theme.
+```qml
+import QtQuick
+import QtQuick.Window
+import ConsoleLauncher            // built-in components (settings panel)
 
-## The `theme.json` manifest
+Window {
+    visible: true
+    width: 1280; height: 720
+    color: "#101010"
 
-```json
-{
-  "name": "My theme",
-  "author": "Nickname",
-  "version": "1.0.0",
-  "description": "One line",
-  "options": [
-    { "id": "accent", "type": "color", "label": "Accent", "default": "#ffc440" },
-    { "id": "background", "type": "select", "label": "Background", "choices": ["aurora", "plain"], "default": "aurora" },
-    { "id": "clock", "type": "bool", "label": "Clock", "default": true }
-  ]
+    property int sel: 0
+
+    Connections {
+        target: Launcher
+        function onNav(a) {
+            if (a === "down") sel = Math.min(Launcher.games.length - 1, sel + 1);
+            else if (a === "up") sel = Math.max(0, sel - 1);
+            else if (a === "confirm") Launcher.play(Launcher.games[sel].id);
+            else if (a === "menu") Launcher.openSettings();
+        }
+    }
+
+    ListView {
+        anchors.fill: parent; anchors.margins: 40
+        model: Launcher.games
+        delegate: Text { text: modelData.title; color: index === sel ? "gold" : "white"; font.pixelSize: 22 }
+    }
+
+    SettingsPanel { anchors.fill: parent }   // opened by Launcher.openSettings()
 }
 ```
 
-Each option becomes:
-- a CSS variable `--opt-<id>` (colours, numbers, text);
-- a `data-opt-<id>` attribute on `<html>`, handy for choices: `html[data-opt-clock="false"] .clock { display: none }`;
-- a value readable in JS with `Launcher.option("accent")`.
+## The `Launcher` object
 
-Values chosen by the user are saved in `user-options.json`, next to the theme.
+### Properties
 
-## `Launcher` API
+| Property | Content |
+|---|---|
+| `systems` | Consoles that have games (details below) |
+| `games` | Every game found |
+| `running` | `true` while a game runs (the window is hidden meanwhile) |
+| `padName` | Name of the connected controller, or empty |
+| `themes`, `theme` | Themes available, active theme |
+| `language` | `fr` or `en`, chosen in the settings |
+| `settingsOpen` | `true` while the settings panel is open |
+| `lastError` | Last error message, or empty |
+| `version` | Launcher version |
 
-Every asynchronous function returns a promise.
+### Signals
+
+| Signal | When |
+|---|---|
+| `nav(action)` | Controller or keyboard: `up`, `down`, `left`, `right`, `confirm`, `back`, `menu`, `favorite`, `pageLeft`, `pageRight`. Directions repeat while held. Not sent while the settings panel is open |
+| `libraryChanged()` | `systems` and `games` were reloaded |
+| `gameInfoReady(id, info)` | Answer to `requestInfo(id)` |
+| `favoriteChanged(id, on)` | Answer to `toggleFavorite(id)` |
+| `sessionEnded(report)` | The emulator closed; `report` holds the measured smoothness and the next setting, or `error` |
+
+### Functions
 
 | Function | Purpose |
 |---|---|
-| `onNav(cb)` | Receives actions: `up`, `down`, `left`, `right`, `confirm`, `back`, `menu`, `favorite`, `pageLeft`, `pageRight`. They come from the controller, the keyboard, or auto-repeat while a direction is held |
-| `onSession(cb)` | `{state: "started"}` when a game starts, then `{state: "ended", report}` or `{state: "failed", error}` |
-| `onPad(cb)` | Controller connected or disconnected: `{name, connected}` |
-| `getLibrary()` | `{systems, games}` (details below) |
-| `gameInfo(id)` | `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` or `{ready: false, code, emulatorId, error}` (`code`: `emulator_missing`, `no_emulator`…) |
-| `play(id)` | Starts the game. The promise resolves when the emulator closes, with the report (measured smoothness, next setting) |
-| `toggleFavorite(id)` | Returns the new state |
-| `setQuality(id, step)` | Fixes a rung by hand. Automatic optimisation stops for that game |
-| `getSettings()` / `saveSettings(s)` | Reads or writes `config.toml` |
-| `hardware(refresh)` | Detected machine. `true` runs the test again |
-| `listThemes()` / `setTheme(id)` | Switch theme (the page reloads) |
-| `option(id)` / `setOption(id, value)` | Manifest options |
+| `requestInfo(id)` | Asks for a game's details → `gameInfoReady`. `info` is `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` or `{ready: false, code, emulatorId, error}` (`code`: `emulator_missing`, `no_emulator`…) |
+| `play(id)` | Starts the game |
+| `toggleFavorite(id)` | Favourite on / off |
+| `openSettings(target)` | Opens the built-in settings panel. `target` (optional): `{emulator: id}` opens that emulator's page, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` a page. Use it when `info.ready` is false to send the player straight to the fix |
+| `request(method, params, callback)` | Calls any engine method ([ENGINE_API.en.md](ENGINE_API.en.md)); `callback(ok, resultOrError)` |
+| `reload()` | Reloads the library |
+| `setTheme(name)` | Switches theme |
+| `fileUrl(path)` | URL of a local file (covers) |
 | `asset("img/bg.png")` | URL of a file in the theme folder |
-| `openSettings(target?)` | Opens the built-in settings panel, so a theme does not have to code one. `target`: `{emulator: id}` opens an emulator's page, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` a page |
 | `toggleFullscreen()`, `quit()` | — |
-| `escapeHtml(text)` | Use it to put game titles into HTML |
 
-DOM event: `launcher:library-changed`, fired when the user adds a game folder from the built-in panel. The library should then be reloaded.
-
-### `getLibrary()` data
+### Data
 
 ```js
 systems: [{
   info: { id: "snes", name: "Super Nintendo", manufacturer: "Nintendo", year: 1990, cost: 1, ... },
-  games: 42,              // number of games
-  emulator: "retroarch",
+  games: 42,                 // number of games
+  emulator: "retroarch",     // emulator id
+  emulator_name: "RetroArch",
   emulator_found: true
 }]
 games: [{
-  id: "6edaa4f992fd1b98", // stable: favourites and profiles are tied to it
+  id: "6edaa4f992fd1b98",    // stable: favourites and profiles are tied to it
   system: "snes",
-  title: "My game",       // cleaned: "(Europe)", "[!]"… removed
-  path: "...", cover: "...", coverUrl: "...", favorite: false
+  title: "My game",          // cleaned: "(Europe)", "[!]"… removed
+  path: "...", cover: "...", favorite: false
 }]
 ```
 
+## Built-in components
+
+`import ConsoleLauncher` gives access to:
+
+| Component | Purpose |
+|---|---|
+| `SettingsPanel` | The whole settings screen (consoles, emulators, folders, smoothness check, language…), usable with a controller. Place it last in the window with `anchors.fill: parent`. Its colours can be changed with the `text`, `accent` and `panelColor` properties |
+
 ## Good practice
 
-- React only to `onNav` actions, never read the controller directly: the theme then works with every controller and with the keyboard.
-- Render long lists as a window (about ten items around the selection), like the templates, to stay smooth with thousands of games.
-- Load `gameInfo` after a short delay while scrolling (see Horizon).
+- React only to `nav`, never read the controller directly: the theme then works with every controller and with the keyboard.
+- Use `ListView` / `GridView` for game lists: they only create the visible items and stay smooth with thousands of games.
+- Ask for `requestInfo` after a short delay while scrolling (see Horizon).
 - Load nothing from the Internet: the launcher must work offline.
-- A theme's JavaScript has the same rights as the interface. Only install themes from people you trust.
+- A theme's QML has the same rights as the interface. Only install themes from people you trust.

@@ -2,14 +2,19 @@
 
 *[English version](DEPENDENCIES.en.md)*
 
-Tout est open source. Rien n'est propriétaire ni payant. Versions relevées dans `Cargo.lock` au moment de la v0.1.
+Tout est open source. Rien n'est propriétaire ni payant. Versions de la v0.3.
 
-## Bibliothèques Rust (compilées dans le logiciel)
+## Interface (C++)
 
 | Bibliothèque | Version | Licence | Rôle |
 |---|---|---|---|
-| [tauri](https://tauri.app) | 2.12 | MIT / Apache-2.0 | Fenêtre et pont entre l'interface web et le moteur |
-| [gilrs](https://gitlab.com/gilrs-project/gilrs) | 0.11 | MIT / Apache-2.0 | Manettes (base SDL, XInput sous Windows, evdev sous Linux) |
+| [Qt](https://www.qt.io) (Core, Gui, Qml, Quick, Quick Dialogs) | 6.8 LTS | LGPL-3.0 (liaison dynamique, DLL fournies à côté du lanceur) | Fenêtre, thèmes QML, rendu GPU, sélecteurs de fichiers |
+| [SDL2](https://www.libsdl.org) | 2.32 | Zlib | Manettes (base GameController de SDL) |
+
+## Moteur : bibliothèques Rust (compilées dans `console_launcher_engine`)
+
+| Bibliothèque | Version | Licence | Rôle |
+|---|---|---|---|
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | 0.37 | MIT | Processeur, mémoire, système |
 | [ash](https://github.com/ash-rs/ash) | 0.38 | MIT / Apache-2.0 | Cartes graphiques via Vulkan (chargé au lancement, facultatif) |
 | [ureq](https://github.com/algesten/ureq) | 3.5 | MIT / Apache-2.0 | Vérification et téléchargement des mises à jour |
@@ -19,7 +24,6 @@ Tout est open source. Rien n'est propriétaire ni payant. Versions relevées dan
 | [walkdir](https://github.com/BurntSushi/walkdir) | 2.5 | MIT / Unlicense | Parcours des dossiers de jeux |
 | [directories](https://github.com/dirs-dev/directories-rs) | 6 | MIT / Apache-2.0 | Dossiers standard par utilisateur |
 | [clap](https://github.com/clap-rs/clap) | 4.6 | MIT / Apache-2.0 | Ligne de commande de `clctl` |
-| [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2 | MIT / Apache-2.0 | Sélecteur natif de fichiers et de dossiers |
 | thiserror, anyhow, log, env_logger | — | MIT / Apache-2.0 | Erreurs et journaux |
 | tempfile *(tests seulement)* | 3 | MIT / Apache-2.0 | Dossiers temporaires dans les tests |
 
@@ -29,28 +33,28 @@ L'arbre complet compte environ 500 paquets. Leurs licences sont MIT, Apache-2.0,
 
 | Système | À installer |
 |---|---|
-| Tous | [Rust](https://rustup.rs) stable (testé avec 1.97) |
-| Windows 10 / 11 | Microsoft C++ Build Tools (avec « Développement Desktop en C++ »). WebView2 est déjà présent sur Windows 10/11 à jour |
-| Debian / Ubuntu | `sudo apt install libwebkit2gtk-4.1-dev libudev-dev librsvg2-dev libssl-dev pkg-config build-essential` |
-| Fedora | `sudo dnf install webkit2gtk4.1-devel systemd-devel librsvg2-devel openssl-devel` |
-| Arch | `sudo pacman -S webkit2gtk-4.1 base-devel librsvg openssl` |
+| Tous | [Rust](https://rustup.rs) stable (testé avec la 1.97), [CMake](https://cmake.org) 3.21+, Qt 6.8 (installateur en ligne de Qt ou `aqtinstall`), SDL2 |
+| Windows 10 / 11 | Visual Studio 2022 ou ses Build Tools (« Développement Desktop en C++ »), kit Qt `msvc2022_64`, archive SDL2 « devel VC » de [libsdl.org](https://github.com/libsdl-org/SDL/releases) |
+| Debian / Ubuntu | `sudo apt install build-essential cmake libsdl2-dev libgl1-mesa-dev`, Qt 6.8 par l'installateur de Qt |
+| Fedora | `sudo dnf install gcc-c++ cmake SDL2-devel mesa-libGL-devel qt6-qtdeclarative-devel` (si la distribution fournit Qt 6.8 ou plus récent) |
+| Arch | `sudo pacman -S base-devel cmake sdl2 qt6-declarative` |
 
-Pour créer les installateurs : `cargo install tauri-cli --version "^2" --locked`, puis `cargo tauri build` depuis `app/src-tauri`.
+Commandes : [qt-prototype/README.fr.md](../../qt-prototype/README.fr.md). Les paquets sont produits par l'intégration continue (`.github/workflows/ci.yml`) : dossier Windows avec `windeployqt`, AppImage Linux avec `linuxdeploy`.
 
 ## À l'exécution
 
-- **Windows** : WebView2 (inclus dans Windows 10/11).
-- **Linux** : WebKitGTK 4.1 (installé avec la plupart des bureaux).
-- **Facultatif** : un pilote Vulkan pour la détection de la carte graphique. Sans lui, le lanceur démarre quand même et choisit des réglages prudents.
+- **Windows** : rien à installer ; les DLL de Qt et de SDL2 sont dans le dossier.
+- **Linux** : l'AppImage contient Qt ; un bureau X11 ou Wayland suffit.
+- **Facultatif** : un pilote Vulkan pour détecter la carte graphique. Sans lui, le lanceur démarre quand même et choisit des réglages prudents.
 
-## Outils de mesure (facultatifs, non fournis)
+## Outils de mesure (fournis avec les paquets)
 
-| Outil | Licence | Système | Utilisation |
-|---|---|---|---|
-| [MangoHud](https://github.com/flightlessmango/MangoHud) | MIT | Linux | Enregistre le temps de chaque image pendant la partie. À installer avec le gestionnaire de paquets |
-| [PresentMon](https://github.com/GameTechDev/PresentMon) | MIT | Windows | Même rôle. Le choisir dans Réglages › Mesure de fluidité (ou `perf.presentmon_path`). Nécessite les droits administrateur ou le groupe « Utilisateurs du journal de performances » |
+| Outil | Version | Licence | Système | Usage |
+|---|---|---|---|---|
+| [PresentMon](https://github.com/GameTechDev/PresentMon) | 2.6.0 | MIT | Windows | Enregistre la durée de chaque image pendant le jeu. Dans `tools/presentmon/`. Nécessite les droits administrateur ou le groupe « Utilisateurs du journal de performances » : **Réglages › Mesure de fluidité › Autoriser la mesure** |
+| [MangoHud](https://github.com/flightlessmango/MangoHud) | 0.8.4 | MIT | Linux | Même rôle. Dans `tools/mangohud/` à l'intérieur de l'AppImage. Une copie installée sur la machine est prioritaire |
 
-Sans ces outils, les jeux se lancent normalement avec le réglage estimé. Seule la mesure automatique est mise en pause, et le lanceur le signale.
+Leurs fichiers de licence sont à côté d'eux. Sans mesure, les jeux se lancent normalement avec les réglages estimés, et le lanceur le signale.
 
 ## Émulateurs (non fournis, téléchargés depuis leurs sources officielles)
 

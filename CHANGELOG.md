@@ -4,6 +4,40 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [0.3.0] — 2026-10-23 — Qt Quick interface
+
+### English
+
+**Added**
+- The Qt Quick application (`qt-prototype/`) is now the interface, with the settings screen of 0.2.0 rebuilt in QML as a built-in component (`import ConsoleLauncher`, `SettingsPanel`) shared by every theme: emulator per console, emulators, game and emulator folders, smoothness check, system optimisations, language, theme.
+- Engine linked into the application: new `cl-api` crate (one JSON entry point, documented in [ENGINE_API.en.md](docs/prototype/ENGINE_API.en.md)) and `cl-ffi` crate (C library `console_launcher_engine` with its header). Calls run on worker threads; `clctl` is no longer started for each action.
+- Measurement tools shipped with the packages: PresentMon 2.6.0 on Windows, MangoHud 0.8.4 on Linux (injected through `LD_PRELOAD` and a Vulkan layer). A copy installed on the machine still takes precedence.
+- Windows: **Allow the measurement** button, which adds the user to the "Performance Log Users" group after an administrator prompt.
+- Native file and folder dialogs; pressing A on a game whose emulator is missing opens that emulator's settings page.
+- Packages built by the CI: Windows folder (Qt, SDL2, engine, PresentMon) and Linux AppImage (Qt, engine, MangoHud).
+- Guides [ENGINE_API.en.md](docs/prototype/ENGINE_API.en.md), [THEMES.en.md](docs/prototype/THEMES.en.md) rewritten for QML.
+
+**Changed**
+- Qt 6.8 (latest long-term support series) is the minimum version.
+- Theme and language are stored in `config.toml`; themes follow the language chosen in the settings.
+- The Tauri interface (`app/`, `themes/` in HTML) is removed from this branch; it stays on `feat/rust-tauri-prototype`.
+
+### Français
+
+**Ajouts**
+- L'application Qt Quick (`qt-prototype/`) devient l'interface, avec l'écran de réglages de la 0.2.0 refait en QML sous forme de composant intégré (`import ConsoleLauncher`, `SettingsPanel`) partagé par tous les thèmes : émulateur par console, émulateurs, dossiers de jeux et d'émulateurs, mesure de fluidité, optimisations système, langue, thème.
+- Moteur intégré à l'application : nouvelle crate `cl-api` (un point d'entrée JSON unique, décrit dans [ENGINE_API.fr.md](docs/prototype/ENGINE_API.fr.md)) et crate `cl-ffi` (bibliothèque C `console_launcher_engine` avec son en-tête). Les appels tournent sur des fils de travail ; `clctl` n'est plus lancé à chaque action.
+- Outils de mesure fournis avec les paquets : PresentMon 2.6.0 sous Windows, MangoHud 0.8.4 sous Linux (injecté via `LD_PRELOAD` et une couche Vulkan). Une copie installée sur la machine reste prioritaire.
+- Windows : bouton **Autoriser la mesure**, qui ajoute l'utilisateur au groupe « Utilisateurs du journal de performances » après une fenêtre administrateur.
+- Sélecteurs natifs de fichiers et de dossiers ; appuyer sur A sur un jeu dont l'émulateur manque ouvre la page de réglages de cet émulateur.
+- Paquets produits par l'intégration continue : dossier Windows (Qt, SDL2, moteur, PresentMon) et AppImage Linux (Qt, moteur, MangoHud).
+- Guides [ENGINE_API.fr.md](docs/prototype/ENGINE_API.fr.md) et [THEMES.fr.md](docs/prototype/THEMES.fr.md) réécrits pour QML.
+
+**Modifications**
+- Qt 6.8 (dernière série à support long terme) est la version minimale.
+- Le thème et la langue sont enregistrés dans `config.toml` ; les thèmes suivent la langue choisie dans les réglages.
+- L'interface Tauri (`app/`, `themes/` en HTML) est retirée de cette branche ; elle reste sur `feat/rust-tauri-prototype`.
+
 ## [0.2.1] — 2026-10-23 — Interface comparison
 
 ### English

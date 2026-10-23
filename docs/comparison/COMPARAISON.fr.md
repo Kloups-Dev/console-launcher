@@ -2,6 +2,8 @@
 
 *[English version](COMPARISON.en.md)*
 
+> **Résultat (2026-10-23) :** Qt Quick a été retenu pour cette branche. L'interface Tauri en a été retirée (elle reste sur `feat/rust-tauri-prototype`), et le moteur Rust est maintenant intégré à l'application Qt sous forme de bibliothèque, au lieu d'être appelé via `clctl`. Les mesures ci-dessous datent d'avant ce changement.
+
 But : choisir la base technique du projet sur des résultats réels. Les critères sont un design très poussé, des thèmes personnalisables, Windows d'abord puis Linux, et une consommation minimale pendant les jeux.
 
 ## Les trois pistes

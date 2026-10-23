@@ -69,4 +69,4 @@ clctl analyse capture.csv --game "nom du jeu"
 
 - Le premier lancement d'un jeu peut saccader pendant la compilation des shaders. Les 60 premières images sont ignorées et la mesure commence après 20 s, mais un jeu qui compile beaucoup peut être jugé trop sévèrement la première fois.
 - La mesure ne voit que ce que l'écran affiche. Un ralentissement du son seul n'est pas détecté.
-- Sous Windows, PresentMon demande des droits particuliers (voir [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md)).
+- Sous Windows, PresentMon a besoin d'une autorisation : **Réglages › Mesure de fluidité › Autoriser la mesure**, puis fermer et rouvrir la session Windows (voir [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md)).

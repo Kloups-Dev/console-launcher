@@ -2,14 +2,19 @@
 
 *[Version française](DEPENDENCIES.fr.md)*
 
-Everything is open source. Nothing is proprietary or paid. Versions taken from `Cargo.lock` at v0.1.
+Everything is open source. Nothing is proprietary or paid. Versions as of v0.3.
 
-## Rust libraries (compiled into the software)
+## Interface (C++)
 
 | Library | Version | Licence | Purpose |
 |---|---|---|---|
-| [tauri](https://tauri.app) | 2.12 | MIT / Apache-2.0 | Window and bridge between the web interface and the engine |
-| [gilrs](https://gitlab.com/gilrs-project/gilrs) | 0.11 | MIT / Apache-2.0 | Controllers (SDL database, XInput on Windows, evdev on Linux) |
+| [Qt](https://www.qt.io) (Core, Gui, Qml, Quick, Quick Dialogs) | 6.8 LTS | LGPL-3.0 (dynamically linked, DLLs shipped next to the launcher) | Window, QML themes, GPU rendering, file pickers |
+| [SDL2](https://www.libsdl.org) | 2.32 | Zlib | Controllers (SDL GameController database) |
+
+## Engine: Rust libraries (compiled into `console_launcher_engine`)
+
+| Library | Version | Licence | Purpose |
+|---|---|---|---|
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | 0.37 | MIT | Processor, memory, OS |
 | [ash](https://github.com/ash-rs/ash) | 0.38 | MIT / Apache-2.0 | Graphics cards through Vulkan (loaded at run time, optional) |
 | [ureq](https://github.com/algesten/ureq) | 3.5 | MIT / Apache-2.0 | Update checks and downloads |
@@ -19,7 +24,6 @@ Everything is open source. Nothing is proprietary or paid. Versions taken from `
 | [walkdir](https://github.com/BurntSushi/walkdir) | 2.5 | MIT / Unlicense | Game folder scanning |
 | [directories](https://github.com/dirs-dev/directories-rs) | 6 | MIT / Apache-2.0 | Standard per-user folders |
 | [clap](https://github.com/clap-rs/clap) | 4.6 | MIT / Apache-2.0 | `clctl` command line |
-| [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2 | MIT / Apache-2.0 | Native file and folder picker |
 | thiserror, anyhow, log, env_logger | — | MIT / Apache-2.0 | Errors and logs |
 | tempfile *(tests only)* | 3 | MIT / Apache-2.0 | Temporary folders in tests |
 
@@ -29,28 +33,28 @@ The full tree has about 500 packages. Their licences are MIT, Apache-2.0, BSD, I
 
 | System | Install |
 |---|---|
-| All | Stable [Rust](https://rustup.rs) (tested with 1.97) |
-| Windows 10 / 11 | Microsoft C++ Build Tools ("Desktop development with C++"). WebView2 is already present on up-to-date Windows 10/11 |
-| Debian / Ubuntu | `sudo apt install libwebkit2gtk-4.1-dev libudev-dev librsvg2-dev libssl-dev pkg-config build-essential` |
-| Fedora | `sudo dnf install webkit2gtk4.1-devel systemd-devel librsvg2-devel openssl-devel` |
-| Arch | `sudo pacman -S webkit2gtk-4.1 base-devel librsvg openssl` |
+| All | Stable [Rust](https://rustup.rs) (tested with 1.97), [CMake](https://cmake.org) 3.21+, Qt 6.8 (Qt online installer or `aqtinstall`), SDL2 |
+| Windows 10 / 11 | Visual Studio 2022 or its Build Tools ("Desktop development with C++"), Qt kit `msvc2022_64`, SDL2 "devel VC" archive from [libsdl.org](https://github.com/libsdl-org/SDL/releases) |
+| Debian / Ubuntu | `sudo apt install build-essential cmake libsdl2-dev libgl1-mesa-dev`, Qt 6.8 from the Qt installer |
+| Fedora | `sudo dnf install gcc-c++ cmake SDL2-devel mesa-libGL-devel qt6-qtdeclarative-devel` (if the distribution ships Qt 6.8 or newer) |
+| Arch | `sudo pacman -S base-devel cmake sdl2 qt6-declarative` |
 
-To create the installers: `cargo install tauri-cli --version "^2" --locked`, then `cargo tauri build` from `app/src-tauri`.
+Commands: [qt-prototype/README.en.md](../../qt-prototype/README.en.md). The packages are built by the CI (`.github/workflows/ci.yml`): Windows folder with `windeployqt`, Linux AppImage with `linuxdeploy`.
 
 ## At run time
 
-- **Windows**: WebView2 (included in Windows 10/11).
-- **Linux**: WebKitGTK 4.1 (installed with most desktops).
+- **Windows**: nothing to install; the Qt and SDL2 DLLs are in the folder.
+- **Linux**: the AppImage carries Qt; an X11 or Wayland desktop is enough.
 - **Optional**: a Vulkan driver for graphics card detection. Without it the launcher still starts and picks cautious settings.
 
-## Measurement tools (optional, not shipped)
+## Measurement tools (shipped with the packages)
 
-| Tool | Licence | System | Use |
-|---|---|---|---|
-| [MangoHud](https://github.com/flightlessmango/MangoHud) | MIT | Linux | Records the time of every frame during play. Install it with the package manager |
-| [PresentMon](https://github.com/GameTechDev/PresentMon) | MIT | Windows | Same role. Choose it in Settings › Smoothness check (or `perf.presentmon_path`). Needs administrator rights or the "Performance Log Users" group |
+| Tool | Version | Licence | System | Use |
+|---|---|---|---|---|
+| [PresentMon](https://github.com/GameTechDev/PresentMon) | 2.6.0 | MIT | Windows | Records the time of every frame during play. In `tools/presentmon/`. Needs administrator rights or the "Performance Log Users" group: **Settings › Smoothness check › Allow the measurement** |
+| [MangoHud](https://github.com/flightlessmango/MangoHud) | 0.8.4 | MIT | Linux | Same role. In `tools/mangohud/` inside the AppImage. A copy installed on the machine takes precedence |
 
-Without these tools, games launch normally with the estimated settings. Only automatic measurement is paused, and the launcher says so.
+Their licence files are next to them. Without measurement, games launch normally with the estimated settings, and the launcher says so.
 
 ## Emulators (not shipped, downloaded from their official sources)
 

@@ -2,6 +2,8 @@
 
 *[Version française](COMPARAISON.fr.md)*
 
+> **Outcome (2026-10-23):** Qt Quick was chosen for this branch. The Tauri interface was removed from it (it stays on `feat/rust-tauri-prototype`), and the Rust engine is now linked into the Qt application as a library instead of being called through `clctl`. The measurements below were taken before that change.
+
 Goal: choose the project's technical base from real results. The criteria are very advanced design, customisable themes, Windows first then Linux, and minimal resource use while games run.
 
 ## The three tracks

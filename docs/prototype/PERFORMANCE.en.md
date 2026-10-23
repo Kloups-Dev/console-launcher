@@ -69,4 +69,4 @@ clctl analyse capture.csv --game "game name"
 
 - A game's first launch may stutter while shaders compile. The first 60 frames are ignored and measurement starts after 20 s, but a game that compiles a lot may be judged too harshly the first time.
 - Measurement only sees what reaches the screen. Audio-only slowdown is not detected.
-- On Windows, PresentMon needs specific rights (see [DEPENDENCIES.en.md](DEPENDENCIES.en.md)).
+- On Windows, PresentMon needs a permission: **Settings › Smoothness check › Allow the measurement**, then sign out of Windows and back in (see [DEPENDENCIES.en.md](DEPENDENCIES.en.md)).

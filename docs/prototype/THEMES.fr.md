@@ -2,109 +2,136 @@
 
 *[English version](THEMES.en.md)*
 
-Un thème est un dossier contenant 4 fichiers : HTML, CSS, JavaScript et un manifeste. Il décide de **tout** l'affichage : disposition, couleurs, animations, sons, ordre des menus. Le lanceur lui fournit les données (consoles, jeux, jaquettes, réglages) et les actions de la manette. Le thème n'a jamais besoin de savoir quel émulateur est utilisé.
+Un thème est un dossier qui contient un fichier `Main.qml`, écrit en QML, le langage déclaratif de Qt Quick. Il décide de **tout** ce qui est à l'écran : disposition, couleurs, animations, sons, ordre des menus. Le lanceur fournit les données (consoles, jeux, jaquettes, réglages) et les actions de la manette. Le thème n'a jamais besoin de savoir quel émulateur est utilisé.
 
-Pour jouer, aucun thème n'est à créer : « Horizon » est actif par défaut.
+Personne n'est obligé de créer un thème pour jouer : « Horizon » est actif par défaut.
 
-## Où se trouvent les thèmes
+## Où sont les thèmes
 
-`<dossier de données>/themes/<nom>/`. Les deux modèles y sont copiés au premier lancement et ne sont plus jamais écrasés ensuite : on peut les modifier directement.
+Dans le dossier `themes` à côté de l'exécutable (`ConsoleLauncher\themes` dans le paquet Windows). Chaque sous-dossier qui contient un `Main.qml` est un thème.
 
 ```
 themes/mon-theme/
-  theme.json    manifeste (nom, options réglables)
-  index.html    structure de la page
-  style.css     apparence
-  theme.js      comportement (reçoit l'objet Launcher)
-  ...           images, polices, sons : libre
+  Main.qml       le thème ; sa racine est une Window
+  ...            images, polices, sons, autres fichiers QML : libre
 ```
 
-Le nom du dossier ne peut contenir que des lettres, des chiffres, `-` et `_`.
+Pour travailler depuis un dossier de développement, indiquer le dossier des thèmes dans la variable `CONSOLE_LAUNCHER_QT_THEMES`.
 
 ## Partir d'un modèle
 
-1. Copier `themes/grid` (le plus court, environ 80 lignes de JS) ou `themes/horizon` (plus complet).
-2. Renommer le dossier et le champ `name` de `theme.json`.
-3. Ouvrir le menu (Tab / Start) → Thème, jusqu'à afficher le nouveau.
-4. Modifier, puis appuyer sur **F5** pour recharger. **F11** passe en plein écran.
+1. Copier `themes/grid` (le plus court, environ 120 lignes) ou `themes/horizon` (plus complet).
+2. Renommer le dossier.
+3. Ouvrir les réglages (Tab / Start) → Thème, jusqu'à voir le nouveau.
+4. Modifier `Main.qml`, puis changer de thème et revenir pour le recharger. **F11** bascule le plein écran.
 
-Pour travailler directement dans un dossier de développement :
+Les erreurs QML s'affichent dans la console ; les réglages restent accessibles avec Tab.
 
-```bash
-CONSOLE_LAUNCHER_THEMES=/chemin/vers/mes-themes cargo run -p console-launcher
-```
+## Thème minimal
 
-Les erreurs JavaScript s'affichent en bas de l'écran, et le menu reste accessible avec Tab pour changer de thème.
+```qml
+import QtQuick
+import QtQuick.Window
+import ConsoleLauncher            // composants intégrés (panneau de réglages)
 
-## Le manifeste `theme.json`
+Window {
+    visible: true
+    width: 1280; height: 720
+    color: "#101010"
 
-```json
-{
-  "name": "Mon thème",
-  "author": "Pseudo",
-  "version": "1.0.0",
-  "description": "Une ligne",
-  "options": [
-    { "id": "accent", "type": "color", "label": "Accent", "default": "#ffc440" },
-    { "id": "background", "type": "select", "label": "Fond", "choices": ["aurora", "plain"], "default": "aurora" },
-    { "id": "clock", "type": "bool", "label": "Horloge", "default": true }
-  ]
+    property int sel: 0
+
+    Connections {
+        target: Launcher
+        function onNav(a) {
+            if (a === "down") sel = Math.min(Launcher.games.length - 1, sel + 1);
+            else if (a === "up") sel = Math.max(0, sel - 1);
+            else if (a === "confirm") Launcher.play(Launcher.games[sel].id);
+            else if (a === "menu") Launcher.openSettings();
+        }
+    }
+
+    ListView {
+        anchors.fill: parent; anchors.margins: 40
+        model: Launcher.games
+        delegate: Text { text: modelData.title; color: index === sel ? "gold" : "white"; font.pixelSize: 22 }
+    }
+
+    SettingsPanel { anchors.fill: parent }   // ouvert par Launcher.openSettings()
 }
 ```
 
-Chaque option devient :
-- une variable CSS `--opt-<id>` (couleurs, nombres, textes) ;
-- un attribut `data-opt-<id>` sur `<html>`, pratique pour les choix : `html[data-opt-clock="false"] .horloge { display: none }` ;
-- une valeur lisible en JS avec `Launcher.option("accent")`.
+## L'objet `Launcher`
 
-Les valeurs choisies par l'utilisateur sont enregistrées dans `user-options.json`, à côté du thème.
+### Propriétés
 
-## API `Launcher`
+| Propriété | Contenu |
+|---|---|
+| `systems` | Consoles qui ont des jeux (détail plus bas) |
+| `games` | Tous les jeux trouvés |
+| `running` | `true` pendant une partie (la fenêtre est alors masquée) |
+| `padName` | Nom de la manette branchée, ou vide |
+| `themes`, `theme` | Thèmes disponibles, thème actif |
+| `language` | `fr` ou `en`, choisi dans les réglages |
+| `settingsOpen` | `true` quand le panneau de réglages est ouvert |
+| `lastError` | Dernier message d'erreur, ou vide |
+| `version` | Version du lanceur |
 
-Toutes les fonctions asynchrones renvoient une promesse.
+### Signaux
+
+| Signal | Quand |
+|---|---|
+| `nav(action)` | Manette ou clavier : `up`, `down`, `left`, `right`, `confirm`, `back`, `menu`, `favorite`, `pageLeft`, `pageRight`. Les directions se répètent tant qu'elles sont tenues. Rien n'est envoyé quand le panneau de réglages est ouvert |
+| `libraryChanged()` | `systems` et `games` ont été rechargés |
+| `gameInfoReady(id, info)` | Réponse à `requestInfo(id)` |
+| `favoriteChanged(id, on)` | Réponse à `toggleFavorite(id)` |
+| `sessionEnded(report)` | L'émulateur s'est fermé ; `report` contient la fluidité mesurée et le réglage suivant, ou `error` |
+
+### Fonctions
 
 | Fonction | Rôle |
 |---|---|
-| `onNav(cb)` | Reçoit les actions : `up`, `down`, `left`, `right`, `confirm`, `back`, `menu`, `favorite`, `pageLeft`, `pageRight`. Elles viennent de la manette, du clavier ou de la répétition automatique quand une direction est maintenue |
-| `onSession(cb)` | `{state: "started"}` au lancement d'un jeu, puis `{state: "ended", report}` ou `{state: "failed", error}` |
-| `onPad(cb)` | Manette branchée ou débranchée : `{name, connected}` |
-| `getLibrary()` | `{systems, games}` (détail ci-dessous) |
-| `gameInfo(id)` | `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` ou `{ready: false, code, emulatorId, error}` (`code` : `emulator_missing`, `no_emulator`…) |
-| `play(id)` | Lance le jeu. La promesse se termine quand l'émulateur se ferme, avec le rapport (fluidité mesurée, réglage suivant) |
-| `toggleFavorite(id)` | Renvoie le nouvel état |
-| `setQuality(id, palier)` | Fixe un palier à la main. L'optimisation automatique s'arrête pour ce jeu |
-| `getSettings()` / `saveSettings(s)` | Lit ou écrit `config.toml` |
-| `hardware(refresh)` | Machine détectée. `true` relance le test |
-| `listThemes()` / `setTheme(id)` | Changer de thème (la page se recharge) |
-| `option(id)` / `setOption(id, valeur)` | Options du manifeste |
+| `requestInfo(id)` | Demande le détail d'un jeu → `gameInfoReady`. `info` vaut `{ready, emulator, emulatorId, tunesSettings, stepLabel, ladder, settled, measure, belowRequirements, notes}` ou `{ready: false, code, emulatorId, error}` (`code` : `emulator_missing`, `no_emulator`…) |
+| `play(id)` | Lance le jeu |
+| `toggleFavorite(id)` | Favori activé / désactivé |
+| `openSettings(cible)` | Ouvre le panneau de réglages intégré. `cible` (facultative) : `{emulator: id}` ouvre la page de cet émulateur, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` une page. À utiliser quand `info.ready` est faux, pour envoyer le joueur directement au bon endroit |
+| `request(méthode, paramètres, rappel)` | Appelle n'importe quelle méthode du moteur ([ENGINE_API.fr.md](ENGINE_API.fr.md)) ; `rappel(ok, résultatOuErreur)` |
+| `reload()` | Recharge la bibliothèque |
+| `setTheme(nom)` | Change de thème |
+| `fileUrl(chemin)` | URL d'un fichier local (jaquettes) |
 | `asset("img/fond.png")` | URL d'un fichier du dossier du thème |
-| `openSettings(cible?)` | Ouvre le panneau de réglages intégré, ce qui évite de devoir en coder un. `cible` : `{emulator: id}` ouvre la page d'un émulateur, `{page: "systems" \| "emulators" \| "folders" \| "capture"}` une page |
 | `toggleFullscreen()`, `quit()` | — |
-| `escapeHtml(texte)` | À utiliser pour insérer des titres de jeux dans du HTML |
 
-Événement DOM : `launcher:library-changed`, émis quand l'utilisateur ajoute un dossier de jeux depuis le panneau intégré. Il faut alors recharger la bibliothèque.
-
-### Données de `getLibrary()`
+### Données
 
 ```js
 systems: [{
   info: { id: "snes", name: "Super Nintendo", manufacturer: "Nintendo", year: 1990, cost: 1, ... },
-  games: 42,              // nombre de jeux
-  emulator: "retroarch",
+  games: 42,                 // nombre de jeux
+  emulator: "retroarch",     // identifiant de l'émulateur
+  emulator_name: "RetroArch",
   emulator_found: true
 }]
 games: [{
-  id: "6edaa4f992fd1b98", // stable : favoris et profils y sont rattachés
+  id: "6edaa4f992fd1b98",    // stable : favoris et profils y sont liés
   system: "snes",
-  title: "Mon jeu",       // nettoyé : "(Europe)", "[!]"… retirés
-  path: "...", cover: "...", coverUrl: "...", favorite: false
+  title: "Mon jeu",          // nettoyé : « (Europe) », « [!] »… retirés
+  path: "...", cover: "...", favorite: false
 }]
 ```
 
+## Composants intégrés
+
+`import ConsoleLauncher` donne accès à :
+
+| Composant | Rôle |
+|---|---|
+| `SettingsPanel` | Tout l'écran de réglages (consoles, émulateurs, dossiers, mesure de fluidité, langue…), utilisable à la manette. Le placer en dernier dans la fenêtre avec `anchors.fill: parent`. Ses couleurs se changent avec les propriétés `text`, `accent` et `panelColor` |
+
 ## Bonnes pratiques
 
-- Ne réagir qu'aux actions de `onNav`, sans lire la manette soi-même : le thème fonctionne ainsi avec toutes les manettes et au clavier.
-- Afficher les longues listes par fenêtre (une dizaine d'éléments autour de la sélection), comme les modèles, pour rester fluide avec des milliers de jeux.
-- Charger `gameInfo` avec un léger délai pendant le défilement (voir Horizon).
+- Réagir seulement à `nav`, ne jamais lire la manette directement : le thème fonctionne alors avec toutes les manettes et au clavier.
+- Utiliser `ListView` / `GridView` pour les listes de jeux : ils ne créent que les éléments visibles et restent fluides avec des milliers de jeux.
+- Demander `requestInfo` après un court délai pendant le défilement (voir Horizon).
 - Ne rien charger depuis Internet : le lanceur doit fonctionner hors ligne.
-- Le JavaScript d'un thème a les mêmes droits que l'interface. N'installez que des thèmes de personnes de confiance.
+- Le QML d'un thème a les mêmes droits que l'interface. N'installer que des thèmes de personnes de confiance.
