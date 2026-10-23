@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ConsoleLauncher VERSION 0.3.0 LANGUAGES CXX)
+project(ConsoleLauncher VERSION 0.3.1 LANGUAGES CXX)
 
 # Console Launcher — C++17 + Qt Quick interface. Themes are QML folders read
 # from disk, controllers go through SDL2, and the Rust engine (crate cl-ffi)

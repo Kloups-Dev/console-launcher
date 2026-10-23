@@ -39,8 +39,16 @@ fn answer(v: Value) -> *mut c_char {
 /// `data_dir` is NULL or a NUL-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn cl_engine_open(data_dir: *const c_char) -> *mut ClEngine {
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .try_init();
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    // The application may ask for a log file (it has no console on Windows).
+    if let Some(path) = std::env::var_os("CONSOLE_LAUNCHER_ENGINE_LOG") {
+        if let Ok(file) = std::fs::File::create(path) {
+            logger.target(env_logger::Target::Pipe(Box::new(file)));
+        }
+    }
+    let _ = logger.try_init();
+    log::info!("engine {} starting", env!("CARGO_PKG_VERSION"));
     let dir = unsafe { str_arg(data_dir) }
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);

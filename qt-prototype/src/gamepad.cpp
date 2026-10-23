@@ -31,30 +31,60 @@ bool isDirection(const QString &a) {
 } // namespace
 
 Gamepad::Gamepad(QObject *parent) : QObject(parent) {
-    m_timer.setInterval(kPollMs);
-    m_timer.setTimerType(Qt::PreciseTimer);
-    connect(&m_timer, &QTimer::timeout, this, &Gamepad::poll);
-    start();
+    m_thread.setObjectName("gamepad");
+    m_worker = new GamepadWorker;
+    m_worker->moveToThread(&m_thread);
+    connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
+    connect(m_worker, &GamepadWorker::nav, this, &Gamepad::nav);
+    connect(m_worker, &GamepadWorker::padName, this, &Gamepad::padName);
 }
 
-Gamepad::~Gamepad() { stop(); }
+Gamepad::~Gamepad() {
+    if (m_thread.isRunning()) {
+        QMetaObject::invokeMethod(m_worker, [w = m_worker] { w->stop(); },
+                                  Qt::BlockingQueuedConnection);
+        m_thread.quit();
+        m_thread.wait(2000);
+    }
+}
 
 void Gamepad::start() {
+    m_thread.start();
+    QMetaObject::invokeMethod(m_worker, [w = m_worker] { w->start(); }, Qt::QueuedConnection);
+}
+
+void Gamepad::setPaused(bool paused) {
+    QMetaObject::invokeMethod(m_worker, [w = m_worker, paused] { w->setPaused(paused); },
+                              Qt::QueuedConnection);
+}
+
+void GamepadWorker::start() {
+    if (!m_timer) {
+        m_timer = new QTimer(this);
+        m_timer->setInterval(kPollMs);
+        m_timer->setTimerType(Qt::PreciseTimer);
+        connect(m_timer, &QTimer::timeout, this, &GamepadWorker::poll);
+    }
     if (m_started)
         return;
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (SDL_Init(SDL_INIT_GAMECONTROLLER) != 0)
+    qInfo("starting SDL controller support");
+    if (SDL_Init(SDL_INIT_GAMECONTROLLER) != 0) {
+        qWarning("SDL: %s", SDL_GetError());
         return; // no controller support; keyboard still works
+    }
+    qInfo("SDL ready, %d device(s)", SDL_NumJoysticks());
     m_started = true;
     for (int i = 0; i < SDL_NumJoysticks(); ++i)
         if (SDL_IsGameController(i))
             if (SDL_GameController *c = SDL_GameControllerOpen(i))
                 Q_EMIT padName(QString::fromUtf8(SDL_GameControllerName(c)));
-    m_timer.start();
+    m_timer->start();
 }
 
-void Gamepad::stop() {
-    m_timer.stop();
+void GamepadWorker::stop() {
+    if (m_timer)
+        m_timer->stop();
     if (m_started) {
         SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
         m_started = false;
@@ -62,14 +92,14 @@ void Gamepad::stop() {
     m_held.clear();
 }
 
-void Gamepad::setPaused(bool paused) {
+void GamepadWorker::setPaused(bool paused) {
     if (paused)
         stop();
     else
         start();
 }
 
-void Gamepad::press(const QString &dir) {
+void GamepadWorker::press(const QString &dir) {
     if (dir == m_held)
         return;
     m_held = dir;
@@ -80,7 +110,7 @@ void Gamepad::press(const QString &dir) {
     }
 }
 
-void Gamepad::poll() {
+void GamepadWorker::poll() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {

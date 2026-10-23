@@ -94,6 +94,19 @@ jobs:
             "https://raw.githubusercontent.com/GameTechDev/PresentMon/v${PRESENTMON_VERSION}/LICENSE.txt"
           cp CHANGELOG.md docs/prototype/config.example.toml "$out/"
           echo "::notice title=Windows package::Qt $(qmake -query QT_VERSION), $(ls "$out/tools/presentmon" | tr '\n' ' '), $(du -sh "$out" | cut -f1)"
+      # Starts the packaged launcher on the Windows runner: the theme must
+      # load. The launcher's log is shown in the run summary either way.
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $dir = "dist/ConsoleLauncher"
+          $env:CONSOLE_LAUNCHER_HOME = "$env:RUNNER_TEMP\cl-home"
+          $p = Start-Process -FilePath "$dir/console-launcher-qt.exe" -ArgumentList "--smoke-test" -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); $code = 2 } else { $code = $p.ExitCode }
+          $log = if (Test-Path "$dir/console-launcher.log") { (Get-Content "$dir/console-launcher.log") -join '%0A' } else { "no log file" }
+          if ($code -eq 0) { Write-Output "::notice title=Smoke test (Windows)::$log" }
+          else { Write-Output "::error title=Smoke test (Windows), exit $code::$log"; exit 1 }
+          Remove-Item "$dir/console-launcher.log", "$dir/console-launcher-engine.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: console-launcher-qt-windows-x64
