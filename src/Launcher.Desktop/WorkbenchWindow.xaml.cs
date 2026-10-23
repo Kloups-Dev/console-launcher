@@ -41,6 +41,7 @@ public partial class WorkbenchWindow : Window
         backend = new LauncherBackend(new LibraryStore(Path.Combine(dataDirectory, "library.json")));
         dolphinInstaller = new(downloadClient, dataDirectory);
         managedDolphin = dolphinInstaller.Detect();
+        KeyboardHelpText.Text = DolphinControls.KeyboardHelp;
         backend.Changed += OnBackendChanged;
         SystemsList.ItemsSource = IntegrationCatalog.Systems;
         SystemsList.SelectedIndex = 0;
@@ -78,6 +79,9 @@ public partial class WorkbenchWindow : Window
         InstallDolphinButton.IsEnabled = !busy && backend.CanWrite && RuntimeInformation.OSArchitecture == Architecture.X64;
         InstallDolphinButton.Content = managedDolphin is null ? "Installer Dolphin " + DolphinPackage.Current.Version : "Utiliser Dolphin installé";
         CancelInstallButton.IsEnabled = Installing;
+        DolphinControlsPanel.Visibility = system?.Id == "gamecube" ? Visibility.Visible : Visibility.Collapsed;
+        ApplyDolphinControlsButton.IsEnabled = !busy && backend.CanWrite && managedDolphin is not null;
+        DolphinInputBox.IsEnabled = !busy;
         if (!Installing) DolphinInstallText.Text = managedDolphin is null
             ? "Dolphin n'est pas installé dans le lanceur. Téléchargement officiel et extraction automatique (Windows x64)."
             : "Dolphin " + managedDolphin.Version + " installé et vérifié. Cliquez pour l'utiliser pour cette console.";
@@ -112,6 +116,7 @@ public partial class WorkbenchWindow : Window
             SearchBox.Text = "";
             PreparationText.Text = "Sélectionnez ou ajoutez un jeu, puis vérifiez sa préparation.";
             PlanText.Text = "";
+            ControlsResultText.Text = "Les réglages existants sont conservés tant que vous ne cliquez pas sur Appliquer les contrôles.";
         }
         finally { rendering = false; }
         RefreshGames();
@@ -256,6 +261,20 @@ public partial class WorkbenchWindow : Window
         StatusText.Text = outcome;
     }
     private void OnCancelInstall(object sender, RoutedEventArgs e) => installationCancellation?.Cancel();
+    private void OnApplyDolphinControls(object sender, RoutedEventArgs e) => Guard(() =>
+    {
+        if (backend.Status.Busy) throw new InvalidOperationException("Fermez la partie avant de modifier les contrôles.");
+        if (managedDolphin is null || SelectedSystem?.Id != "gamecube")
+            throw new InvalidOperationException("Installez ou sélectionnez d'abord Dolphin depuis l'atelier.");
+        var tag = (DolphinInputBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (!Enum.TryParse<DolphinInputMode>(tag, out var mode)) return;
+        backend.Configure("gamecube", new("dolphin", managedDolphin.Executable, UserDirectory: managedDolphin.UserDirectory));
+        var backup = DolphinControls.Apply(managedDolphin.UserDirectory, mode);
+        AdapterBox.SelectedItem = "dolphin";
+        ExecutableBox.Text = managedDolphin.Executable;
+        ControlsResultText.Text = backup is null ? "Contrôles appliqués. Prêts pour le prochain lancement."
+            : "Contrôles appliqués. Copie des anciens réglages : " + backup;
+    });
     private void OnDolphinPrerequisite(object sender, RoutedEventArgs e) => Guard(() =>
         Process.Start(new ProcessStartInfo("https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist") { UseShellExecute = true }));
     private void OnExit(object sender, RoutedEventArgs e) => Close();

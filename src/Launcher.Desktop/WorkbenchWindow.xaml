@@ -56,9 +56,17 @@
          <TextBlock x:Name="DolphinInstallText" TextWrapping="Wrap"/>
          <ProgressBar x:Name="DolphinProgress" Minimum="0" Maximum="100" Height="6" Margin="0,10,0,10"/>
          <StackPanel Orientation="Horizontal"><Button x:Name="InstallDolphinButton" Content="Installer Dolphin" Click="OnInstallDolphin"/><Button x:Name="CancelInstallButton" Content="Annuler" Click="OnCancelInstall" IsEnabled="False"/></StackPanel>
-         <TextBlock Text="Version officielle vérifiée • profil GameCube XInput de départ. Pour la Wii, les contrôles restent à configurer." TextWrapping="Wrap" Foreground="#586473" Margin="0,10,0,0"/>
+         <TextBlock Text="Version officielle vérifiée • profil GameCube clavier et XInput à la première installation. Pour la Wii, les contrôles restent à configurer." TextWrapping="Wrap" Foreground="#586473" Margin="0,10,0,0"/>
          <TextBlock x:Name="DolphinRuntimeText" TextWrapping="Wrap" Margin="0,8,0,4"/>
          <Button Content="Prérequis Microsoft Visual C++…" Click="OnDolphinPrerequisite" HorizontalAlignment="Left"/>
+        </StackPanel></GroupBox>
+        <GroupBox x:Name="DolphinControlsPanel" Header="Contrôles GameCube — joueur 1" Margin="0,0,0,16"><StackPanel>
+         <TextBlock Text="Pour Dolphin installé par l'atelier. Choisissez le profil à appliquer ; une copie des anciens réglages est conservée." TextWrapping="Wrap" Margin="0,0,0,8"/>
+         <DockPanel><Button x:Name="ApplyDolphinControlsButton" Content="Appliquer les contrôles" Click="OnApplyDolphinControls" DockPanel.Dock="Right" Margin="8,0,0,0"/>
+          <ComboBox x:Name="DolphinInputBox" SelectedIndex="0" MinHeight="32"><ComboBoxItem Content="Clavier + manette XInput" Tag="Both"/><ComboBoxItem Content="Clavier" Tag="Keyboard"/><ComboBoxItem Content="Manette XInput" Tag="Gamepad"/></ComboBox>
+         </DockPanel>
+         <TextBlock x:Name="KeyboardHelpText" TextWrapping="Wrap" Margin="0,10,0,0"/>
+         <TextBlock x:Name="ControlsResultText" TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
         </StackPanel></GroupBox>
         <TextBlock Text="Module de lancement" FontWeight="SemiBold"/>
         <ComboBox x:Name="AdapterBox" SelectionChanged="OnAdapterChanged" Margin="0,7,0,16" MinHeight="32"/>
@@ -68,7 +76,7 @@
         <Button x:Name="SaveConfigurationButton" Content="Enregistrer cette configuration" Click="OnSaveConfiguration" HorizontalAlignment="Left"/>
         <GroupBox Header="Profil actuellement appliqué" Margin="0,24,0,0"><StackPanel>
          <TextBlock Text="Réglages personnels de l'émulateur + lancement direct en plein écran." TextWrapping="Wrap"/>
-         <TextBlock Text="Dolphin installé ici utilise un profil séparé, avec un premier réglage GameCube XInput. Les installations choisies manuellement gardent leurs réglages. BIOS, contrôles Wii et correctifs avancés restent à vérifier." TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
+         <TextBlock Text="Dolphin installé ici utilise un profil séparé, avec des contrôles GameCube clavier et XInput à la première installation. Les installations choisies manuellement gardent leurs réglages. BIOS, contrôles Wii et correctifs avancés restent à vérifier." TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
          <TextBlock Text="Le chemin peut être conservé avant installation ; la préparation signalera tout fichier absent. Un cœur existant n'est pas une preuve de compatibilité avec le jeu choisi." TextWrapping="Wrap" Foreground="#586473" Margin="0,8,0,0"/>
         </StackPanel></GroupBox>
        </StackPanel></ScrollViewer>
