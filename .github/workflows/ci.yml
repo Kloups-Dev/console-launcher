@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
 
 env:
@@ -163,3 +164,38 @@ jobs:
         with:
           name: console-launcher-qt-linux-x64
           path: dist
+
+  # A tag "v…" publishes a pre-release with both packages. The release points
+  # at the tagged commit, so it belongs to the branch that commit is on.
+  release:
+    name: pre-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [engine, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish
+        run: |
+          set -e
+          tag="${GITHUB_REF_NAME}"
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          mkdir out
+          (cd artifacts/console-launcher-qt-windows-x64 && zip -qr "../../out/ConsoleLauncher-${version}-windows-x64.zip" ConsoleLauncher)
+          cp artifacts/console-launcher-qt-linux-x64/ConsoleLauncher-x86_64.AppImage "out/ConsoleLauncher-${version}-x86_64.AppImage"
+          # Notes: header, then this version's changelog section.
+          {
+            echo "Test build of the Qt Quick interface, branch \`feat/qt-quick-comparison\`. Not a final release."
+            echo
+            echo "Version de test de l'interface Qt Quick, branche \`feat/qt-quick-comparison\`. Ce n'est pas une version finale."
+            echo
+            awk -v v="## [${version}]" 'index($0, v) == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md
+          } > notes.md
+          gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --prerelease --latest=false --title "Console Launcher ${version} (Qt Quick, test)" --notes-file notes.md

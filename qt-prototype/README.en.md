@@ -14,6 +14,10 @@ The launcher's interface: consoles from left to right, game list, game details, 
 | Engine | Rust library `console_launcher_engine` (crate `cl-ffi`), loaded by the application; calls run on worker threads ([ENGINE_API.en.md](../docs/prototype/ENGINE_API.en.md)) |
 | During a game | Window hidden (Qt Quick stops drawing) and SDL fully shut down |
 
+## Releases
+
+A tag starting with `v` (for example `v0.3.0-qt`) runs the CI and publishes both packages as a GitHub **pre-release**, attached to the tagged commit and never marked as the latest release.
+
 ## Building
 
 Requirements: Rust (stable), CMake 3.21+, a C++17 compiler, Qt 6.8 or newer (Core, Gui, Qml, Quick, Quick Dialogs), SDL2. Details per system: [DEPENDENCIES.en.md](../docs/prototype/DEPENDENCIES.en.md).

@@ -14,7 +14,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Measurement tools shipped with the packages: PresentMon 2.6.0 on Windows, MangoHud 0.8.4 on Linux (injected through `LD_PRELOAD` and a Vulkan layer). A copy installed on the machine still takes precedence.
 - Windows: **Allow the measurement** button, which adds the user to the "Performance Log Users" group after an administrator prompt.
 - Native file and folder dialogs; pressing A on a game whose emulator is missing opens that emulator's settings page.
-- Packages built by the CI: Windows folder (Qt, SDL2, engine, PresentMon) and Linux AppImage (Qt, engine, MangoHud).
+- Packages built by the CI: Windows folder (Qt, SDL2, engine, PresentMon) and Linux AppImage (Qt, engine, MangoHud). A `v…` tag publishes them as a GitHub pre-release.
 - Guides [ENGINE_API.en.md](docs/prototype/ENGINE_API.en.md), [THEMES.en.md](docs/prototype/THEMES.en.md) rewritten for QML.
 
 **Changed**
@@ -30,7 +30,7 @@ Toutes les modifications notables sont listées ici, de la plus récente à la p
 - Outils de mesure fournis avec les paquets : PresentMon 2.6.0 sous Windows, MangoHud 0.8.4 sous Linux (injecté via `LD_PRELOAD` et une couche Vulkan). Une copie installée sur la machine reste prioritaire.
 - Windows : bouton **Autoriser la mesure**, qui ajoute l'utilisateur au groupe « Utilisateurs du journal de performances » après une fenêtre administrateur.
 - Sélecteurs natifs de fichiers et de dossiers ; appuyer sur A sur un jeu dont l'émulateur manque ouvre la page de réglages de cet émulateur.
-- Paquets produits par l'intégration continue : dossier Windows (Qt, SDL2, moteur, PresentMon) et AppImage Linux (Qt, moteur, MangoHud).
+- Paquets produits par l'intégration continue : dossier Windows (Qt, SDL2, moteur, PresentMon) et AppImage Linux (Qt, moteur, MangoHud). Un tag `v…` les publie en pré-version sur GitHub.
 - Guides [ENGINE_API.fr.md](docs/prototype/ENGINE_API.fr.md) et [THEMES.fr.md](docs/prototype/THEMES.fr.md) réécrits pour QML.
 
 **Modifications**

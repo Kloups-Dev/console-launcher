@@ -14,6 +14,10 @@ L'interface du lanceur : consoles de gauche à droite, liste des jeux, détail d
 | Moteur | Bibliothèque Rust `console_launcher_engine` (crate `cl-ffi`), chargée par l'application ; les appels tournent sur des fils de travail ([ENGINE_API.fr.md](../docs/prototype/ENGINE_API.fr.md)) |
 | Pendant une partie | Fenêtre masquée (Qt Quick arrête de dessiner) et SDL complètement arrêté |
 
+## Versions publiées
+
+Un tag commençant par `v` (par exemple `v0.3.0-qt`) lance l'intégration continue et publie les deux paquets en **pré-version** sur GitHub, rattachée au commit du tag et jamais marquée comme dernière version.
+
 ## Compiler
 
 Prérequis : Rust (stable), CMake 3.21+, un compilateur C++17, Qt 6.8 ou plus récent (Core, Gui, Qml, Quick, Quick Dialogs), SDL2. Détail par système : [DEPENDENCIES.fr.md](../docs/prototype/DEPENDENCIES.fr.md).
