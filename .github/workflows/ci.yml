@@ -50,6 +50,15 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
+      - name: SDL2
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\sdl2.zip"
+          Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\sdl2" -Force
+          $root = ("$env:RUNNER_TEMP\sdl2\SDL2-$env:SDL2_VERSION") -replace '\\', '/'
+          Get-ChildItem "$root/cmake" | Select-Object -ExpandProperty Name
+          "SDL2_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Ninja
         run: choco install ninja -y --no-progress
