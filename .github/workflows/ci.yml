@@ -92,7 +92,7 @@ jobs:
           curl -fsSL -o "$out/tools/presentmon/LICENSE.txt" \
             "https://raw.githubusercontent.com/GameTechDev/PresentMon/v${PRESENTMON_VERSION}/LICENSE.txt"
           cp CHANGELOG.md docs/prototype/config.example.toml "$out/"
-          ls -R "$out" | head -80
+          echo "::notice title=Windows package::Qt $(qmake -query QT_VERSION), $(ls "$out/tools/presentmon" | tr '\n' ' '), $(du -sh "$out" | cut -f1)"
       - uses: actions/upload-artifact@v4
         with:
           name: console-launcher-qt-windows-x64
@@ -158,6 +158,7 @@ jobs:
             --icon-file qt-prototype/packaging/console-launcher.png \
             --plugin qt --output appimage
           mkdir dist && mv ConsoleLauncher-x86_64.AppImage dist/ && cp CHANGELOG.md dist/
+          echo "::notice title=Linux package::Qt $("$QT_ROOT_DIR/bin/qmake" -query QT_VERSION), $(ls AppDir/usr/bin/tools/mangohud | tr '\n' ' '), $(du -h dist/ConsoleLauncher-x86_64.AppImage | cut -f1)"
       - uses: actions/upload-artifact@v4
         with:
           name: console-launcher-qt-linux-x64
