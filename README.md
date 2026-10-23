@@ -47,6 +47,8 @@ Retour : fermeture normale du jeu, bouton de demande de fermeture, Ctrl + Alt + 
 
 Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; retirer une entrée ne supprime aucun fichier. Les réglages et sauvegardes existants des émulateurs restent utilisés. Le dossier portable nécessite .NET Desktop Runtime 8. Les vérifications de préparation contrôlent les chemins et la commande, pas la compatibilité réelle du jeu, du BIOS ou du cœur.
 
+Pour les essais locaux demandés par l'utilisateur, conserver un **dossier décompressé fixe `Console-Launcher` à côté du dépôt** (dans le dossier de sorties). Publier les nouvelles compilations dans ce même dossier, après fermeture du logiciel ; l'utilisateur ouvre toujours son `ConsoleLauncher.exe`. Ne pas imposer de ZIP à chaque modification. Les données restent dans `%LOCALAPPDATA%/ConsoleLauncher/`, hors des binaires de test. Le ZIP reste seulement un moyen de distribution si nécessaire.
+
 ## Installer Dolphin depuis l'atelier
 
 Sur `feat/dolphin-installation`, choisir GameCube ou Wii → Configuration de la console → **Installer Dolphin 2609a**. Téléchargement officiel, vérification SHA-256, extraction 7z intégrée, progression/annulation et chemin enregistré automatiquement pour la console choisie. Si déjà présent, **Utiliser Dolphin installé** l'associe à la console sans nouveau téléchargement. Aucun besoin de 7-Zip installé.
