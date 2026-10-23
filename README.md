@@ -98,3 +98,9 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Fait : la v0.3.0 tournait sans fenêtre sous Windows (« SettingsPanel is not a type ») car le module QML `ConsoleLauncher` n'était pas dans les paquets ; il est maintenant compilé dans le programme. Ajouts : journaux `console-launcher.log` et `console-launcher-engine.log`, fenêtre d'erreur si un thème ne charge pas, manettes SDL sur leur propre fil après l'affichage, test `--smoke-test` lancé par la CI sur les deux paquets.
 - Vérifié : panne reproduite avec le paquet v0.3.0 sous Wine et sur la machine Windows de la CI ; après correction, test de démarrage réussi sous Windows Server 2025 et dans l'AppImage Linux (CI), et depuis un dossier propre sous Linux.
 - Limites : pas encore relancé sur la machine Windows d'un humain.
+
+### 2026-10-23 — Pré-versions automatiques (Qt Quick)
+
+- Code : `78be4bc`, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : la CI publie seule la pré-version `v<version>-qt` (paquets + section du changelog) quand la version de `Cargo.toml` n'a pas encore de release ; plus de tag à créer à la main. Un tag `v…` manuel reste possible.
+- Limites : la publication suit la réussite des tests de démarrage ; une version déjà publiée n'est pas remplacée.
