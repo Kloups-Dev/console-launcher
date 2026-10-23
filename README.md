@@ -27,7 +27,7 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 - Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
 - Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
 - Second prototype sur la branche `feat/rust-tauri-prototype` (Windows et Linux, Rust + Tauri 2, v0.2.0) dans `crates/`, `app/` et `themes/`, sans fichier commun avec la PR n°1 : thèmes HTML/CSS/JS modifiables, écran de réglages complet à la manette, 8 émulateurs reconnus (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés, optimisation automatique par jeu (estimation puis mesure de fluidité) qui laisse tranquilles les réglages modifiés à la main, mises à jour des émulateurs avec retour arrière. Détails : `docs/prototype/README.fr.md`. Les deux voies techniques restent à comparer avant d'en fusionner une sur `main`.
-- Interface Qt Quick sur la branche `feat/qt-quick-comparison` (v0.3.0) : reprend tout le travail de la v0.2.0 ; le moteur Rust y est intégré sous forme de bibliothèque (`cl-api`, `cl-ffi`) au lieu de passer par `clctl` ; Qt 6.8 LTS ; écran de réglages en QML ; PresentMon (Windows) et MangoHud (Linux) fournis dans les paquets. L'interface Tauri a été retirée de cette branche à la demande de Cykalos et reste sur `feat/rust-tauri-prototype`. Détails : `docs/prototype/README.fr.md`.
+- Interface Qt Quick sur la branche `feat/qt-quick-comparison` (v0.3.1) : reprend tout le travail de la v0.2.0 ; le moteur Rust y est intégré sous forme de bibliothèque (`cl-api`, `cl-ffi`) au lieu de passer par `clctl` ; Qt 6.8 LTS ; écran de réglages en QML ; PresentMon (Windows) et MangoHud (Linux) fournis dans les paquets. L'interface Tauri a été retirée de cette branche à la demande de Cykalos et reste sur `feat/rust-tauri-prototype`. Détails : `docs/prototype/README.fr.md`.
 
 ## Essayer le prototype
 
@@ -91,3 +91,10 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Code : `88cdcea` puis suivi CI, branche `feat/qt-quick-comparison`, envoyé.
 - Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version ») ; une version créée depuis la page GitHub (qui crée le tag) est complétée par la CI avec les paquets.
 - Limites : l'environnement de l'IA ne peut pas envoyer de tag ; le tag `v0.3.0-qt` est à créer par un humain. La page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.
+
+### 2026-10-23 — Correction du démarrage sous Windows (Qt Quick, v0.3.1)
+
+- Code : `8cf79d5` et `03cf2a3`, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : la v0.3.0 tournait sans fenêtre sous Windows (« SettingsPanel is not a type ») car le module QML `ConsoleLauncher` n'était pas dans les paquets ; il est maintenant compilé dans le programme. Ajouts : journaux `console-launcher.log` et `console-launcher-engine.log`, fenêtre d'erreur si un thème ne charge pas, manettes SDL sur leur propre fil après l'affichage, test `--smoke-test` lancé par la CI sur les deux paquets.
+- Vérifié : panne reproduite avec le paquet v0.3.0 sous Wine et sur la machine Windows de la CI ; après correction, test de démarrage réussi sous Windows Server 2025 et dans l'AppImage Linux (CI), et depuis un dossier propre sous Linux.
+- Limites : pas encore relancé sur la machine Windows d'un humain.
