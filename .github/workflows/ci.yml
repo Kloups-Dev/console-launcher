@@ -50,6 +50,9 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Ninja
+        run: choco install ninja -y --no-progress
       - name: SDL2
         shell: bash
         run: |
@@ -61,18 +64,20 @@ jobs:
         run: |
           set -o pipefail
           report() { grep -iE "error|cannot|could not|not found" build.log | grep -v "^ *$" | head -25 | sed 's/^/::error::/'; exit 1; }
-          cmake -S qt-prototype -B build -G "Visual Studio 17 2022" -A x64 \
-            -DCMAKE_BUILD_TYPE=Release -DSDL2_DIR="$SDL2_ROOT/cmake" 2>&1 | tee build.log || report
-          cmake --build build --config Release 2>&1 | tee build.log || report
+          cmake -S qt-prototype -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DSDL2_DIR="$SDL2_ROOT/cmake" 2>&1 | tee build.log || report
+          cmake --build build 2>&1 | tee build.log || report
       - name: Collect files
         shell: bash
         run: |
-          set -e
+          set -eo pipefail
+          exec > >(tee step.log) 2>&1
+          trap 'tail -25 step.log | sed "s/^/::error::/"' ERR
           out=dist/ConsoleLauncher
           mkdir -p "$out/tools/presentmon"
-          cp build/Release/console-launcher-qt.exe build/Release/console_launcher_engine.dll "$out/"
+          cp build/console-launcher-qt.exe build/console_launcher_engine.dll "$out/"
           cp build/cargo/release/clctl.exe "$out/"
-          cp -r build/Release/themes "$out/themes"
+          cp -r build/themes "$out/themes"
           cp "$SDL2_ROOT/lib/x64/SDL2.dll" "$out/"
           windeployqt --release --no-translations --qmldir qt-prototype/themes --qmldir qt-prototype/ui "$out/console-launcher-qt.exe"
           # Frame measurement tool (MIT), shipped next to the launcher.
@@ -116,7 +121,9 @@ jobs:
           cmake --build build -j 2>&1 | tee build.log || report
       - name: AppImage
         run: |
-          set -e
+          set -eo pipefail
+          exec > >(tee step.log) 2>&1
+          trap 'tail -25 step.log | sed "s/^/::error::/"' ERR
           app=AppDir/usr/bin
           mkdir -p "$app/tools/mangohud"
           cp build/console-launcher-qt build/libconsole_launcher_engine.so build/cargo/release/clctl "$app/"
