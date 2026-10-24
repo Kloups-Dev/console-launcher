@@ -1,0 +1,16 @@
+[package]
+name = "cl-ffi"
+description = "C library over the engine, linked into the Qt interface"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "console_launcher_engine"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cl-api = { path = "../cl-api" }
+serde_json.workspace = true
+env_logger.workspace = true
+log.workspace = true

@@ -26,6 +26,8 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 - Prototype : Windows, C#/.NET 8 et WPF ; cœur indépendant de l'interface. Menu horizontal, bibliothèque JSON, navigation clavier/XInput, sélection de Dolphin et ajout d'un fichier GameCube pour lancement direct puis retour au menu.
 - Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
 - Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
+- Second prototype sur la branche `feat/rust-tauri-prototype` (Windows et Linux, Rust + Tauri 2, v0.2.0) dans `crates/`, `app/` et `themes/`, sans fichier commun avec la PR n°1 : thèmes HTML/CSS/JS modifiables, écran de réglages complet à la manette, 8 émulateurs reconnus (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés, optimisation automatique par jeu (estimation puis mesure de fluidité) qui laisse tranquilles les réglages modifiés à la main, mises à jour des émulateurs avec retour arrière. Détails : `docs/prototype/README.fr.md`. Les deux voies techniques restent à comparer avant d'en fusionner une sur `main`.
+- Interface Qt Quick sur la branche `feat/qt-quick-comparison` (v0.3.1) : reprend tout le travail de la v0.2.0 ; le moteur Rust y est intégré sous forme de bibliothèque (`cl-api`, `cl-ffi`) au lieu de passer par `clctl` ; Qt 6.8 LTS ; écran de réglages en QML ; PresentMon (Windows) et MangoHud (Linux) fournis dans les paquets. L'interface Tauri a été retirée de cette branche à la demande de Cykalos et reste sur `feat/rust-tauri-prototype`. Détails : `docs/prototype/README.fr.md`.
 
 ## Essayer le prototype
 
@@ -55,3 +57,50 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Fait : un seul document général, suppression des anciens guides et consignes redondantes.
 - Vérifié : renvois documentaires et cohérence du contenu ; aucun code applicatif modifié.
 - Publication : simplification fusionnée sur `main` par la PR n°3. Le prototype a été aligné dans `a2f635d` ; sa PR n°1 reste ouverte.
+
+### 2026-10-22 — Second prototype (Rust + Tauri) sur une branche dédiée
+
+- Code : branche `feat/rust-tauri-prototype`, à comparer avec la PR n°1 ; `main` n'est pas modifié.
+- Fait : application Tauri, moteur en crates Rust, deux thèmes modèles, outil `clctl`, CI Windows/Linux avec exécutables de test téléchargeables, documentation FR/EN dans `docs/prototype/`, `CHANGELOG.md`.
+- Vérifié : 47 tests, `cargo clippy -D warnings` et `cargo fmt` sans erreur sous Linux ; interface essayée sur écran virtuel Linux avec de faux émulateurs (navigation, menu, thèmes, lancement).
+- Limites : aucun essai sous Windows, avec un vrai émulateur, une vraie manette ou une vraie mesure de fluidité ; seuils d'optimisation à calibrer. Aucun fichier de la PR n°1 modifié ; seul `.gitignore` a reçu deux lignes (`/target/`, `/app/src-tauri/gen/`).
+
+### 2026-10-22 — Correction du lint Windows (Rust + Tauri)
+
+- Code : `c642e1e`, branche `feat/rust-tauri-prototype`, envoyé.
+- Fait : l'erreur de lecture de `config.toml` est mise en boîte ; `clippy::result_large_err` bloquait la CI Windows.
+- Vérifié : `cargo fmt`, `cargo clippy -D warnings` et tests de `cl-core` sous Linux ; résultat Windows donné par la CI.
+- Limites : l'exécutable de test Windows a été lancé par un humain ; RetroArch absent, donc aucune partie lancée.
+
+### 2026-10-22 — Réglages complets et nouveaux émulateurs (Rust + Tauri, v0.2.0)
+
+- Code : `3cf24ae`, branche `feat/rust-tauri-prototype`, envoyé.
+- Fait : écran de réglages à la manette (émulateur par console, émulateurs, dossiers, mesure, optimisations système) ; profils TOML (mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés ; console Wii U ; dossiers d'émulateurs dont celui de RetroBat ; détection des réglages modifiés à la main avec bouton de réactivation et sauvegarde des INI ; priorité et GPU dédié sous Windows ; scan qui ignore les dossiers d'émulateurs ; doc FR/EN `docs/prototype/EMULATORS.*.md`.
+- Vérifié : 64 tests, `cargo clippy -D warnings` et `cargo fmt` sous Linux ; CI Windows réussie (compilation, lint, tests, paquet) ; parcours essayés sur écran virtuel Linux avec une fausse installation RetroBat (migration des chemins, choix automatique, modification à la main puis réactivation). Le job Linux de la CI était bloqué sur l'installation des paquets de GitHub au moment de cette entrée.
+- Limites : aucun essai avec les vrais émulateurs ni sous Windows réel ; noms de clés des nouveaux émulateurs à confirmer ; melonDS et Cemu sans réglages optimisés ; PresentMon à installer à part pour la mesure sous Windows.
+
+### 2026-10-23 — Interface Qt Quick avec le moteur intégré (v0.3.0)
+
+- Code : `f784eae` à `7a497d9`, branche `feat/qt-quick-comparison`, envoyé. Branche reçue en bundle (`896df46`), fusionnée avec `feat/rust-tauri-prototype` (`745a9eb`).
+- Fait : moteur intégré à l'application Qt (crates `cl-api` et `cl-ffi`, bibliothèque `console_launcher_engine`, appels sur des fils de travail) ; Qt 6.8 LTS minimum ; panneau de réglages QML partagé par les thèmes (`import ConsoleLauncher`) ; PresentMon 2.6.0 et MangoHud 0.8.4 fournis, bouton d'autorisation de la mesure sous Windows ; CI : paquet Windows (windeployqt) et AppImage Linux ; interface Tauri retirée de cette branche ; doc FR/EN (`ENGINE_API`, `THEMES` réécrit pour QML, `DEPENDENCIES`).
+- Vérifié : tests Rust, `cargo clippy -D warnings` et `cargo fmt` sous Linux et Windows (CI) ; application compilée avec Qt 6.8.4 et essayée sur écran virtuel Linux avec une fausse installation RetroBat (bibliothèque, détail des jeux, réglages, choix d'émulateur, page d'un émulateur manquant, lancement avec un faux PPSSPP) ; paquets Windows et Linux produits par la CI.
+- Limites : paquets non ouverts sur une vraie machine ; MangoHud fourni et autorisation PresentMon jamais essayés avec une vraie partie ; sélecteurs de fichiers non essayés à la manette ; PR n°1 (WPF) non modifiée.
+
+### 2026-10-23 — Pré-version de test Qt Quick (v0.3.0-qt)
+
+- Code : `88cdcea` puis suivi CI, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version ») ; une version créée depuis la page GitHub (qui crée le tag) est complétée par la CI avec les paquets.
+- Limites : l'environnement de l'IA ne peut pas envoyer de tag ; le tag `v0.3.0-qt` est à créer par un humain. La page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.
+
+### 2026-10-23 — Correction du démarrage sous Windows (Qt Quick, v0.3.1)
+
+- Code : `8cf79d5` et `03cf2a3`, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : la v0.3.0 tournait sans fenêtre sous Windows (« SettingsPanel is not a type ») car le module QML `ConsoleLauncher` n'était pas dans les paquets ; il est maintenant compilé dans le programme. Ajouts : journaux `console-launcher.log` et `console-launcher-engine.log`, fenêtre d'erreur si un thème ne charge pas, manettes SDL sur leur propre fil après l'affichage, test `--smoke-test` lancé par la CI sur les deux paquets.
+- Vérifié : panne reproduite avec le paquet v0.3.0 sous Wine et sur la machine Windows de la CI ; après correction, test de démarrage réussi sous Windows Server 2025 et dans l'AppImage Linux (CI), et depuis un dossier propre sous Linux.
+- Limites : pas encore relancé sur la machine Windows d'un humain.
+
+### 2026-10-23 — Pré-versions automatiques (Qt Quick)
+
+- Code : `78be4bc`, branche `feat/qt-quick-comparison`, envoyé.
+- Fait : la CI publie seule la pré-version `v<version>-qt` (paquets + section du changelog) quand la version de `Cargo.toml` n'a pas encore de release ; plus de tag à créer à la main. Un tag `v…` manuel reste possible.
+- Limites : la publication suit la réussite des tests de démarrage ; une version déjà publiée n'est pas remplacée.
