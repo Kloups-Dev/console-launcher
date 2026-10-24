@@ -106,3 +106,10 @@ Les jeux ne sont ni copiés ni déplacés. Les réglages du lanceur sont enregis
 - Fait : interface de bureau réorganisée, hiérarchie claire des réglages et consoles, installation directe de Dolphin, diagnostic local, optimisation stabilité-d'abord, fiches de jeux et jaquettes régionales GameTDB mises en cache.
 - Vérifié : 79 tests locaux, formatage et lint strict réussis ; la CI du tag `v0.3.2-qt` a compilé, testé et ouvert les paquets Windows et Linux, puis publié la pré-version avec ses deux téléchargements.
 - Limites : mesure de fluidité et réglages automatiques encore à calibrer sur plusieurs vraies machines et plusieurs émulateurs ; pas de jeu ni BIOS distribué.
+
+### 2026-10-24 — Certification stabilité-d'abord
+
+- Code : `0359ef1`, branche `feature/stability-certification`, envoyé, pas encore fusionné.
+- Fait : Dolphin repart du rendu natif, la qualité ne monte plus automatiquement et le moteur sépare maintenant les verdicts stable, instable et mesures insuffisantes à partir de trois preuves prévues (vidéo, vitesse interne et audio). L'état est visible dans la fiche du jeu et au retour d'une partie ; les anciens profils restent lisibles.
+- Vérifié : 83 tests de l'espace Rust, formatage et lint strict réussis ; moteur et application Qt compilés en Release sous Windows ; test de démarrage Qt réussi.
+- Limites : PresentMon/MangoHud fournit actuellement la preuve vidéo uniquement. La collecte de la vitesse interne et des sous-alimentations audio de Dolphin reste à connecter avant qu'une partie réelle puisse recevoir le verdict « stable ».
