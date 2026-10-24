@@ -104,5 +104,5 @@ Les jeux ne sont ni copiés ni déplacés. Les réglages du lanceur sont enregis
 
 - Code : `0071a91` pour le remplacement de la V1 sur `main`, puis `f1c134d` pour la version 0.3.2, envoyés.
 - Fait : interface de bureau réorganisée, hiérarchie claire des réglages et consoles, installation directe de Dolphin, diagnostic local, optimisation stabilité-d'abord, fiches de jeux et jaquettes régionales GameTDB mises en cache.
-- Vérifié : 79 tests locaux, formatage et lint strict réussis ; la CI du remplacement de la V1 a compilé, testé et ouvert les paquets Windows et Linux. La CI et la publication de la 0.3.2 restent à confirmer après le tag.
+- Vérifié : 79 tests locaux, formatage et lint strict réussis ; la CI du tag `v0.3.2-qt` a compilé, testé et ouvert les paquets Windows et Linux, puis publié la pré-version avec ses deux téléchargements.
 - Limites : mesure de fluidité et réglages automatiques encore à calibrer sur plusieurs vraies machines et plusieurs émulateurs ; pas de jeu ni BIOS distribué.
