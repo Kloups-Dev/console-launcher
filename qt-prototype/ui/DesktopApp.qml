@@ -267,6 +267,26 @@ ApplicationWindow {
         function onGameInfoReady(id, data) {
             if (app.currentGame && app.currentGame.id === id) app.gameInfo = data
         }
+        function onSessionEnded(report) {
+            if (report.error) {
+                app.showNotice(app.t("La partie s'est arrêtée avec une erreur : ",
+                                     "The session ended with an error: ") + report.error)
+                return
+            }
+            const verdict = report.certification ? report.certification.verdict : ""
+            if (verdict === "stable")
+                app.showNotice(app.t("Partie terminée — profil certifié stable.",
+                                     "Session ended — profile certified stable."))
+            else if (verdict === "unstable")
+                app.showNotice(app.t("Partie terminée — instabilité détectée, réglage prudent appliqué au prochain lancement.",
+                                     "Session ended — instability detected; a safer setting will be used next time."))
+            else if (verdict === "insufficient")
+                app.showNotice(app.t("Partie terminée — mesures encore insuffisantes pour certifier la stabilité.",
+                                     "Session ended — evidence is still insufficient to certify stability."))
+            else
+                app.showNotice(app.t("Partie terminée.", "Session ended."))
+            if (app.currentGame) Launcher.requestInfo(app.currentGame.id)
+        }
         function onFavoriteChanged() { Launcher.reload() }
         function onSettingsOpenChanged() {
             if (!Launcher.settingsOpen) { app.loadOverview(); Launcher.reload() }
@@ -594,6 +614,24 @@ ApplicationWindow {
                                       : app.gameInfo.ready ? app.t("Prêt avec ", "Ready with ") + app.gameInfo.emulator
                                       : app.gameInfo.error
                                 color: app.gameInfo && !app.gameInfo.ready ? "#a12622" : app.palette.text
+                                wrapMode: Text.Wrap
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                visible: app.gameInfo && app.gameInfo.ready
+                                text: app.gameInfo && app.gameInfo.certified
+                                      ? app.t("Stabilité certifiée", "Stability certified")
+                                      : app.gameInfo && app.gameInfo.belowRequirements
+                                        ? app.t("Instable même avec le profil le plus prudent", "Unstable even with the safest profile")
+                                      : app.gameInfo && app.gameInfo.certification
+                                        && app.gameInfo.certification.verdict === "unstable"
+                                          ? app.t("Instabilité détectée — nouvel essai prudent nécessaire", "Instability detected — another conservative test is needed")
+                                        : app.t("Stabilité pas encore certifiée", "Stability not certified yet")
+                                color: app.gameInfo && app.gameInfo.certified
+                                       ? "#287a3d"
+                                       : app.gameInfo && app.gameInfo.belowRequirements
+                                         ? "#a12622" : "#a15c00"
+                                font.pixelSize: 11
                                 wrapMode: Text.Wrap
                             }
                             Label {

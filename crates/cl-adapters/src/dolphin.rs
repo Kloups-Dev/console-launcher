@@ -119,9 +119,12 @@ impl EmulatorAdapter for Dolphin {
     }
 
     fn tuning_revision(&self) -> u32 {
-        // Revision 1 removes Skip Drawing and forced Dual Core, and chooses
-        // the initial graphics API with Dolphin's vendor guidance.
-        1
+        // Revision 2 also starts every uncertified game at native resolution.
+        2
+    }
+
+    fn stability_first_step(&self, _system: SystemId, _estimated: usize) -> usize {
+        0
     }
     fn exe_names(&self) -> Vec<String> {
         let names: &[&str] = if cfg!(windows) {

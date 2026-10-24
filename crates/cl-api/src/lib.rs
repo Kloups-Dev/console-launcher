@@ -138,6 +138,8 @@ fn dispatch(
                     "ladder": pl.ladder,
                     "measure": pl.measure,
                     "settled": t.state.done,
+                    "certified": t.state.certified,
+                    "certification": t.history.last().map(|run| &run.certification),
                     "belowRequirements": t.state.below_requirements,
                     "notes": pl.notes,
                 }),

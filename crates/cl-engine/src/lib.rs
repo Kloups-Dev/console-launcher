@@ -18,6 +18,7 @@ use cl_core::{Game, SystemId, SystemInfo};
 use cl_hwprobe::{GpuKind, HardwareReport};
 use cl_perf::estimate::{estimate, GpuClass, HwSummary, LadderKind};
 use cl_perf::frametime::{analyse, parse_file, verdict, FrameStats, Verdict};
+use cl_perf::stability::{assess, StabilityAssessment};
 use cl_perf::store::{GameTuning, ProfileStore, RunRecord};
 use cl_perf::tuner::TuneState;
 use cl_session::{CaptureRequest, SessionResult};
@@ -124,6 +125,8 @@ pub struct PlayReport {
     pub session: SessionResult,
     pub stats: Option<FrameStats>,
     pub verdict: Option<Verdict>,
+    /// Stability-first decision. Frame pacing alone never claims success.
+    pub certification: StabilityAssessment,
     /// Rung for the next launch, and its label.
     pub next_step: usize,
     pub next_label: String,
@@ -1002,7 +1005,10 @@ impl Engine {
             emulator_version: None,
             hardware: fingerprint,
             api: est.api,
-            state: TuneState::new(est.step, ladder_len),
+            state: TuneState::new(
+                adapter.stability_first_step(game.system, est.step),
+                ladder_len,
+            ),
             history: Vec::new(),
         }
     }
@@ -1186,6 +1192,7 @@ impl Engine {
 
         let mut stats = None;
         let mut result_verdict = None;
+        let mut certification = assess(None, None, None);
         if let Some(file) = &session.capture_file {
             match parse_file(file)
                 .map_err(|e| e.to_string())
@@ -1193,11 +1200,13 @@ impl Engine {
             {
                 Ok(s) => {
                     let v = verdict(&s);
+                    certification = assess(Some(&s), None, None);
                     tuning.push_run(RunRecord {
                         at: now(),
                         step: prepared.step,
                         stats: s.clone(),
                         verdict: v,
+                        certification: certification.clone(),
                     });
                     stats = Some(s);
                     result_verdict = Some(v);
@@ -1212,6 +1221,7 @@ impl Engine {
             session,
             stats,
             verdict: result_verdict,
+            certification,
             next_step: tuning.state.current,
             next_label: ladder
                 .get(tuning.state.current)
@@ -1231,11 +1241,13 @@ impl Engine {
         let (adapter, _, _) = self.adapter_for_game(game)?;
         let mut tuning = self.tuning(game, adapter.as_ref());
         let v = verdict(&stats);
+        let certification = assess(Some(&stats), None, None);
         tuning.push_run(RunRecord {
             at: now(),
             step: tuning.state.current,
             stats,
             verdict: v,
+            certification,
         });
         self.profiles().save(&tuning)?;
         Ok(tuning)
@@ -1317,15 +1329,15 @@ mod tests {
 
         let (p, tuning) = engine.prepare(&games[0]).unwrap();
         assert_eq!(p.emulator, "dolphin");
-        // 8 GB discrete GPU → rung 3 of the estimate table.
-        assert_eq!(p.step_label, "1440p");
+        // Dolphin starts conservatively; quality can still be chosen by hand.
+        assert_eq!(p.step_label, "Native");
         assert!(!p.measure);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
         assert!(p
             .plan
             .args
-            .contains(&"--config=GFX.Settings.ShaderCompilationMode=2".into()));
+            .contains(&"--config=GFX.Settings.ShaderCompilationMode=0".into()));
         assert!(!p.plan.args.iter().any(|arg| arg.contains("CPUThread")));
 
         let t = engine.set_step(&games[0], 1).unwrap();
@@ -1363,9 +1375,9 @@ mod tests {
             .unwrap();
 
         let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
-        assert_eq!(tuning.state.current, 3);
+        assert_eq!(tuning.state.current, 0);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
     }
 
     #[test]

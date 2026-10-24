@@ -4,6 +4,22 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [Unreleased]
+
+### English
+
+**Changed**
+- Automatic tuning is now stability-first: Dolphin starts at native resolution, certified settings stay in place, and the launcher never raises quality silently.
+- A session can now be classified as stable, unstable, or insufficient. Frame pacing, actual emulation speed and audio-buffer health are separate signals; missing evidence can no longer produce a false stable result.
+- Existing Dolphin profiles are recalculated once under policy revision 2. Historical profile files remain readable.
+
+### Français
+
+**Modifications**
+- Le réglage automatique devient réellement stabilité-d'abord : Dolphin démarre en résolution native, un réglage certifié reste en place et le lanceur n'augmente jamais la qualité silencieusement.
+- Une partie peut maintenant être classée stable, instable ou insuffisamment mesurée. La régularité vidéo, la vitesse réelle d'émulation et la santé du tampon audio sont des preuves séparées ; une preuve absente ne peut plus produire un faux résultat stable.
+- Les profils Dolphin existants sont recalculés une fois avec la politique 2. Les anciens fichiers de profil restent lisibles.
+
 ## [0.3.2] — 2026-10-24 — Library, metadata and desktop foundation
 
 ### English

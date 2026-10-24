@@ -244,6 +244,10 @@ fn run() -> Result<()> {
                         s.avg_fps, s.low1_fps, s.stutter_pct, v
                     );
                 }
+                println!("Stability certification: {:?}", r.certification.verdict);
+                for reason in &r.certification.reasons {
+                    println!("  - {reason}");
+                }
                 println!(
                     "Next launch: {}{}",
                     r.next_label,
