@@ -21,27 +21,22 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 
 ## État actuel
 
-- Dépôt : https://github.com/Kloups-Dev/console-launcher. Cykalos est administrateur du dépôt.
-- Prototype proposé dans la [PR n°1](https://github.com/Kloups-Dev/console-launcher/pull/1), branche `feat/desktop-foundation`, pas encore fusionné à cette mise à jour.
-- Prototype : Windows, C#/.NET 8 et WPF ; cœur indépendant de l'interface. Menu horizontal, bibliothèque JSON, navigation clavier/XInput, sélection de Dolphin et ajout d'un fichier GameCube pour lancement direct puis retour au menu.
-- Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
-- Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
-- Second prototype sur la branche `feat/rust-tauri-prototype` (Windows et Linux, Rust + Tauri 2, v0.2.0) dans `crates/`, `app/` et `themes/`, sans fichier commun avec la PR n°1 : thèmes HTML/CSS/JS modifiables, écran de réglages complet à la manette, 8 émulateurs reconnus (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés, optimisation automatique par jeu (estimation puis mesure de fluidité) qui laisse tranquilles les réglages modifiés à la main, mises à jour des émulateurs avec retour arrière. Détails : `docs/prototype/README.fr.md`. Les deux voies techniques restent à comparer avant d'en fusionner une sur `main`.
-- Interface Qt Quick sur la branche `feat/qt-quick-comparison` (v0.3.1) : reprend tout le travail de la v0.2.0 ; le moteur Rust y est intégré sous forme de bibliothèque (`cl-api`, `cl-ffi`) au lieu de passer par `clctl` ; Qt 6.8 LTS ; écran de réglages en QML ; PresentMon (Windows) et MangoHud (Linux) fournis dans les paquets. L'interface Tauri a été retirée de cette branche à la demande de Cykalos et reste sur `feat/rust-tauri-prototype`. Détails : `docs/prototype/README.fr.md`.
+- Dépôt : https://github.com/Kloups-Dev/console-launcher. La branche principale est `main`.
+- Version actuelle : **0.3.2**, interface Qt Quick intégrée, passerelle C++/Qt et moteur Rust. Les anciennes voies WPF et Tauri restent consultables dans l'historique et leurs branches, mais ne constituent plus l'application principale.
+- Le lanceur affiche les 15 consoles prises en charge, organise les réglages généraux puis les réglages propres à chaque console, détecte ou installe les émulateurs pris en charge et lance directement les jeux.
+- La bibliothèque possède un cache local de fiches et de jaquettes. GameCube/Wii, Nintendo DS et Wii U utilisent GameTDB avec sélection de l'édition régionale et validation des images téléchargées.
+- L'optimisation privilégie la stabilité, respecte les réglages modifiés à la main et peut mesurer la fluidité avec PresentMon sous Windows ou MangoHud sous Linux.
+- La CI vérifie le formatage, le lint et les tests du moteur sous Windows et Linux, construit les deux applications, les ouvre avec `--smoke-test`, puis fournit les paquets téléchargeables.
+- Limites : aucun jeu ni BIOS fourni ; calibration sur davantage de machines réelles encore nécessaire ; RetroArch reste à installer manuellement ; pas encore d'installateur Windows classique. Détails : `docs/prototype/README.fr.md`.
 
 ## Essayer le prototype
 
-Ces commandes concernent la branche du prototype. Prérequis : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
+Télécharger la pré-version la plus récente dans [Releases](https://github.com/Kloups-Dev/console-launcher/releases) :
 
-```powershell
-dotnet run --project src/Launcher.Desktop/Launcher.Desktop.csproj
-dotnet build src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release
-dotnet run --project tests/Launcher.Checks/Launcher.Checks.csproj --configuration Release
-```
+- Windows : décompresser le ZIP, puis lancer `ConsoleLauncher\console-launcher-qt.exe`.
+- Linux : rendre `ConsoleLauncher-x86_64.AppImage` exécutable, puis le lancer.
 
-Flèches/XInput pour naviguer ; Entrée/A pour choisir ; Échap/B pour revenir ; F11 pour le plein écran. Dans Réglages, sélectionner Dolphin.exe, ajouter son fichier GameCube puis jouer. Fermer la partie dans Dolphin pour revenir.
-
-Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; les réglages et sauvegardes Dolphin existants sont utilisés. Le dossier portable nécessite .NET Desktop Runtime 8.
+Les jeux ne sont ni copiés ni déplacés. Les réglages du lanceur sont enregistrés dans `%APPDATA%\ConsoleLauncher\console-launcher\data` sous Windows et `~/.local/share/console-launcher` sous Linux.
 
 ## Journal partagé
 
@@ -104,3 +99,10 @@ Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont 
 - Code : `78be4bc`, branche `feat/qt-quick-comparison`, envoyé.
 - Fait : la CI publie seule la pré-version `v<version>-qt` (paquets + section du changelog) quand la version de `Cargo.toml` n'a pas encore de release ; plus de tag à créer à la main. Un tag `v…` manuel reste possible.
 - Limites : la publication suit la réussite des tests de démarrage ; une version déjà publiée n'est pas remplacée.
+
+### 2026-10-24 — Base principale Qt Quick et version 0.3.2
+
+- Code : `0071a91` pour le remplacement de la V1 sur `main`, puis `f1c134d` pour la version 0.3.2, envoyés.
+- Fait : interface de bureau réorganisée, hiérarchie claire des réglages et consoles, installation directe de Dolphin, diagnostic local, optimisation stabilité-d'abord, fiches de jeux et jaquettes régionales GameTDB mises en cache.
+- Vérifié : 79 tests locaux, formatage et lint strict réussis ; la CI du remplacement de la V1 a compilé, testé et ouvert les paquets Windows et Linux. La CI et la publication de la 0.3.2 restent à confirmer après le tag.
+- Limites : mesure de fluidité et réglages automatiques encore à calibrer sur plusieurs vraies machines et plusieurs émulateurs ; pas de jeu ni BIOS distribué.
