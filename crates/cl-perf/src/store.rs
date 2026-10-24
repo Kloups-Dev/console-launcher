@@ -1,6 +1,7 @@
 //! Per-game tuning files (`profiles/<game id>.json`).
 
 use crate::frametime::{FrameStats, Verdict};
+use crate::stability::StabilityAssessment;
 use crate::tuner::TuneState;
 use cl_core::{GraphicsApi, SystemId};
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,9 @@ pub struct RunRecord {
     pub step: usize,
     pub stats: FrameStats,
     pub verdict: Verdict,
+    /// Full stability decision. Old profiles default to "insufficient".
+    #[serde(default)]
+    pub certification: StabilityAssessment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +74,7 @@ impl ProfileStore {
 impl GameTuning {
     /// Keeps the last 20 runs so the file stays small.
     pub fn push_run(&mut self, record: RunRecord) {
-        self.state.record(record.verdict);
+        self.state.record(record.certification.verdict);
         self.history.push(record);
         let excess = self.history.len().saturating_sub(20);
         self.history.drain(..excess);
@@ -98,5 +102,26 @@ mod tests {
         store.save(&t).unwrap();
         assert_eq!(store.load("abc123").unwrap().state, t.state);
         assert!(store.load("../etc/passwd").is_none());
+    }
+
+    #[test]
+    fn old_run_history_remains_readable() {
+        let json = r#"{
+            "game_id":"abc","system":"gamecube","emulator":"dolphin",
+            "emulator_version":null,"hardware":"cpu|gpu","api":"vulkan",
+            "state":{"current":0,"max":4,"best_smooth":null,
+                "lowest_failing":null,"done":false,"below_requirements":false},
+            "history":[{"at":1,"step":0,"stats":{"frames":300,
+                "seconds":5.0,"avg_fps":60.0,"low1_fps":59.0,
+                "target_fps":60.0,"stutters":0,"stutter_pct":0.0},
+                "verdict":"smooth"}]
+        }"#;
+        let tuning: GameTuning = serde_json::from_str(json).unwrap();
+        assert_eq!(tuning.history.len(), 1);
+        assert_eq!(
+            tuning.history[0].certification.verdict,
+            crate::stability::CertificationVerdict::Insufficient
+        );
+        assert!(!tuning.state.certified);
     }
 }

@@ -1,16 +1,10 @@
 //! Per-game adjustment from measured sessions.
 //!
-//! Search: start from the estimate. After each measured session:
-//! - smooth → remember it as good, then try the next rung up
-//!   (unless that rung already failed);
-//! - stutters → remember the failure, go back to the last good rung,
-//!   or one rung down if none is known.
-//!
-//! The search ends when a smooth rung sits right below a failing rung (or
-//! at the top of the ladder). It never needs more sessions than the
-//! ladder has rungs.
+//! Stability-first policy: keep a certified rung, descend after a failure,
+//! and never raise quality automatically. Higher rungs remain available as
+//! an explicit user choice.
 
-use crate::frametime::Verdict;
+use crate::stability::CertificationVerdict;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +15,9 @@ pub struct TuneState {
     pub best_smooth: Option<usize>,
     pub lowest_failing: Option<usize>,
     pub done: bool,
+    /// True only when frame pacing, emulation speed and audio all passed.
+    #[serde(default)]
+    pub certified: bool,
     /// True when even the lightest rung stutters: the machine is too slow
     /// for this game and the interface should say so.
     pub below_requirements: bool,
@@ -35,37 +32,35 @@ impl TuneState {
             best_smooth: None,
             lowest_failing: None,
             done: false,
+            certified: false,
             below_requirements: false,
         }
     }
 
     /// Records the verdict of a session played at `self.current`.
-    pub fn record(&mut self, verdict: Verdict) {
+    pub fn record(&mut self, verdict: CertificationVerdict) {
         let cur = self.current;
         match verdict {
-            Verdict::Smooth => {
+            CertificationVerdict::Stable => {
                 self.best_smooth = Some(self.best_smooth.map_or(cur, |b| b.max(cur)));
                 self.below_requirements = false;
-                let ceiling = self.lowest_failing.unwrap_or(self.max + 1);
-                if cur + 1 < ceiling && cur < self.max {
-                    self.current = cur + 1;
-                    self.done = false;
-                } else {
-                    self.done = true;
-                }
+                self.certified = true;
+                self.done = true;
             }
-            Verdict::Stutters => {
+            CertificationVerdict::Unstable => {
                 self.lowest_failing = Some(self.lowest_failing.map_or(cur, |f| f.min(cur)));
-                if let Some(b) = self.best_smooth.filter(|b| *b < cur) {
-                    self.current = b;
-                    self.done = true;
-                } else if cur > 0 {
+                self.certified = false;
+                if cur > 0 {
                     self.current = cur - 1;
                     self.done = false;
                 } else {
                     self.done = true;
                     self.below_requirements = true;
                 }
+            }
+            CertificationVerdict::Insufficient => {
+                self.certified = false;
+                self.done = false;
             }
         }
     }
@@ -74,6 +69,7 @@ impl TuneState {
     pub fn set_by_user(&mut self, step: usize) {
         self.current = step.min(self.max);
         self.done = true;
+        self.certified = false;
     }
 
     /// Hardware or emulator version changed: search again from the current rung.
@@ -81,6 +77,7 @@ impl TuneState {
         self.best_smooth = None;
         self.lowest_failing = None;
         self.done = false;
+        self.certified = false;
         self.below_requirements = false;
     }
 }
@@ -88,62 +85,44 @@ impl TuneState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Verdict::*;
+    use CertificationVerdict::*;
 
     #[test]
-    fn climbs_until_first_failure() {
+    fn stable_never_climbs() {
         let mut t = TuneState::new(1, 5);
-        t.record(Smooth); // 1 ok → try 2
-        assert_eq!((t.current, t.done), (2, false));
-        t.record(Smooth); // 2 ok → try 3
-        t.record(Stutters); // 3 fails → back to 2
-        assert_eq!((t.current, t.done), (2, true));
+        t.record(Stable);
+        assert_eq!((t.current, t.done, t.certified), (1, true, true));
     }
 
     #[test]
     fn descends_when_estimate_was_too_optimistic() {
         let mut t = TuneState::new(4, 5);
-        t.record(Stutters);
+        t.record(Unstable);
         assert_eq!(t.current, 3);
-        t.record(Stutters);
-        t.record(Smooth); // 2 ok, 3 known to fail → done
-        assert_eq!((t.current, t.done), (2, true));
+        t.record(Unstable);
+        t.record(Stable);
+        assert_eq!((t.current, t.done, t.certified), (2, true, true));
     }
 
     #[test]
-    fn stops_at_top_of_ladder() {
-        let mut t = TuneState::new(4, 5);
-        t.record(Smooth);
-        assert_eq!((t.current, t.done), (4, true));
+    fn insufficient_evidence_keeps_the_same_step_open() {
+        let mut t = TuneState::new(2, 5);
+        t.record(Insufficient);
+        assert_eq!((t.current, t.done, t.certified), (2, false, false));
     }
 
     #[test]
     fn flags_machines_below_requirements() {
         let mut t = TuneState::new(0, 5);
-        t.record(Stutters);
+        t.record(Unstable);
         assert!(t.done && t.below_requirements);
         assert_eq!(t.current, 0);
     }
 
     #[test]
-    fn never_exceeds_ladder_length_in_sessions() {
-        for start in 0..5 {
-            for fail_from in 0..=5 {
-                let mut t = TuneState::new(start, 5);
-                let mut sessions = 0;
-                while !t.done {
-                    let v = if t.current >= fail_from {
-                        Stutters
-                    } else {
-                        Smooth
-                    };
-                    t.record(v);
-                    sessions += 1;
-                    assert!(sessions <= 5, "start {start} fail_from {fail_from}");
-                }
-                let expected = fail_from.saturating_sub(1).min(4);
-                assert_eq!(t.current, expected, "start {start} fail_from {fail_from}");
-            }
-        }
+    fn manual_choice_is_not_a_fake_certification() {
+        let mut t = TuneState::new(0, 5);
+        t.set_by_user(3);
+        assert_eq!((t.current, t.done, t.certified), (3, true, false));
     }
 }

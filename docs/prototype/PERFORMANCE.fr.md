@@ -2,13 +2,14 @@
 
 *[English version](PERFORMANCE.en.md)*
 
-Objectif : que chaque jeu tourne à pleine vitesse, sans saccades, avec la meilleure qualité possible sur la machine, et sans que l'utilisateur ait à régler quoi que ce soit.
+Objectif : que chaque jeu tourne comme sur sa console, à pleine vitesse, sans saccades ni coupures audio. La qualité supplémentaire est facultative et ne doit jamais dégrader cette stabilité.
 
-## Le principe en trois étapes
+## Le principe stabilité-d'abord
 
-1. **Simulation, avant la première partie.** Le lanceur détecte le processeur, la mémoire et la carte graphique (via Vulkan), puis lance un test CPU d'environ une seconde. Ce test fait tourner un petit interpréteur de code, le même genre de travail que l'émulation d'un processeur. Avec ces données, il choisit un palier de départ sur « l'échelle de qualité » de l'émulateur.
-2. **Conditions réelles, pendant les parties.** Tant que le bon réglage n'est pas trouvé, la partie est mesurée : MangoHud (Linux) ou PresentMon (Windows) enregistre la durée de chaque image pendant 60 secondes, après 20 secondes de chargement.
-3. **Ajustement.** Si la partie a été fluide, le lanceur essaie le palier supérieur à la partie suivante. Si elle a saccadé, il revient au dernier palier fluide (ou descend d'un cran). Il s'arrête quand un palier fluide se trouve juste sous un palier qui saccade. Cela prend au plus autant de parties que l'échelle a de paliers (5 en général), et souvent 1 ou 2.
+1. **Départ prudent.** Dolphin commence au rendu natif, avec un moteur graphique choisi selon le GPU. L'estimation matérielle reste utile aux autres adaptateurs, mais elle ne justifie jamais à elle seule le mot « stable ».
+2. **Conditions réelles.** MangoHud (Linux) ou PresentMon (Windows) mesure la régularité des images pendant 60 secondes, après 20 secondes de chargement.
+3. **Certification.** Trois preuves indépendantes sont prévues : régularité vidéo, vitesse réelle d'émulation et santé du tampon audio. Une preuve absente donne « mesures insuffisantes », pas un faux succès. Une anomalie connue donne « instable ».
+4. **Ajustement prudent.** Un profil instable descend d'un palier. Un profil certifié reste au palier testé : le lanceur ne monte jamais automatiquement la résolution. L'utilisateur peut toujours choisir manuellement une qualité supérieure.
 
 Le résultat est propre à chaque jeu et enregistré dans `profiles/<id>.json`. Si la machine change (autre processeur ou autre carte graphique), ou si une politique automatique incompatible est corrigée, la recherche recommence.
 
@@ -25,7 +26,7 @@ L'API graphique est choisie automatiquement selon l'émulateur, le système et l
 
 Le palier natif de Dolphin utilise les shaders spécialisés, adaptés aux GPU modestes. Les paliers supérieurs utilisent les ubershaders hybrides. Le mode « Skip Drawing » est exclu des choix automatiques car il gagne du temps en ne dessinant pas les objets dont le shader n'est pas prêt. Le lanceur ne force pas non plus le double cœur : Dolphin conserve ainsi ses exceptions de compatibilité propres à chaque jeu.
 
-## Critères de fluidité
+## Critères vidéo et certification
 
 Une session est jugée **fluide** si :
 - la moyenne atteint au moins 97 % de la fréquence de la console (60 ou 50 images/s) ;
@@ -35,6 +36,8 @@ Une session est jugée **fluide** si :
 Pendant une mesure, l'émulateur affiche chaque rafraîchissement de la console (Dolphin reçoit une option pour ne pas sauter les images en double). Sans cela, un jeu prévu pour 30 images/s et un jeu qui tourne à mi-vitesse donneraient la même mesure.
 
 Sous Windows, PresentMon cible uniquement l'identifiant du processus que le lanceur vient de démarrer. Il ne suit pas les entrées clavier/souris. S'il ne produit aucun CSV, son court journal local est repris dans le compte rendu de la partie afin que l'échec soit explicable au lieu d'être silencieux.
+
+Ces seuils donnent uniquement le verdict vidéo « fluide » ou « saccades ». Depuis la politique stabilité-d'abord, ce verdict seul ne certifie pas le jeu : la vitesse interne et les sous-alimentations du tampon audio doivent aussi être connues. Leur collecte automatique est la prochaine étape ; en attendant, une bonne capture vidéo produit correctement « mesures insuffisantes ».
 
 Ces seuils sont **des valeurs de départ**. Ils seront confirmés ou corrigés après les premiers essais.
 
@@ -50,7 +53,7 @@ Ces seuils sont **des valeurs de départ**. Ils seront confirmés ou corrigés a
 Les valeurs de l'estimation (`crates/cl-perf/src/estimate.rs`) et la référence du test CPU (`REFERENCE_NS` dans `crates/cl-hwprobe/src/bench.rs`) n'ont pas encore été mesurées sur de vraies machines. Protocole proposé :
 
 1. Sur chaque machine de test : `clctl probe --json > machine.json`.
-2. Pour 3 à 5 jeux par console : jouer avec la mesure activée jusqu'à ce que le réglage soit trouvé (`clctl plan` affiche « settled »).
+2. Pour 3 à 5 jeux par console : jouer avec la mesure activée et conserver le palier natif tant que les trois preuves ne sont pas disponibles.
 3. Récupérer `hardware.json` et `profiles/*.json` (ils contiennent les statistiques de chaque session).
 4. Comparer le palier estimé au palier final. Ajuster `required_cpu` et `gpu_budget` pour que l'estimation tombe juste dans la majorité des cas.
 5. Consigner les machines, les jeux et les résultats dans un tableau partagé avant de modifier les seuils.
@@ -72,5 +75,5 @@ clctl analyse capture.csv --game "nom du jeu"
 ## Limites connues
 
 - Le premier lancement d'un jeu peut saccader pendant la compilation des shaders. Les 60 premières images sont ignorées et la mesure commence après 20 s, mais un jeu qui compile beaucoup peut être jugé trop sévèrement la première fois.
-- La mesure ne voit que ce que l'écran affiche. Un ralentissement du son seul n'est pas détecté.
+- PresentMon et MangoHud ne voient que ce que l'écran affiche. La structure de certification refuse donc de conclure « stable » tant que la vitesse interne et l'audio ne sont pas encore collectés.
 - Sous Windows, PresentMon a besoin d'une autorisation : **Réglages › Mesure de fluidité › Autoriser la mesure**, puis fermer et rouvrir la session Windows (voir [DEPENDENCIES.fr.md](DEPENDENCIES.fr.md)).

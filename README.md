@@ -25,7 +25,7 @@ Réutiliser les émulateurs existants. Intention de publier en open source ; nom
 - Version actuelle : **0.3.2**, interface Qt Quick intégrée, passerelle C++/Qt et moteur Rust. Les anciennes voies WPF et Tauri restent consultables dans l'historique et leurs branches, mais ne constituent plus l'application principale.
 - Le lanceur affiche les 15 consoles prises en charge, organise les réglages généraux puis les réglages propres à chaque console, détecte ou installe les émulateurs pris en charge et lance directement les jeux.
 - La bibliothèque possède un cache local de fiches et de jaquettes. GameCube/Wii, Nintendo DS et Wii U utilisent GameTDB avec sélection de l'édition régionale et validation des images téléchargées.
-- L'optimisation privilégie la stabilité, respecte les réglages modifiés à la main et peut mesurer la fluidité avec PresentMon sous Windows ou MangoHud sous Linux.
+- L'optimisation privilégie la stabilité et respecte les réglages modifiés à la main. Dolphin démarre au rendu natif et ne monte plus automatiquement en qualité. PresentMon ou MangoHud mesure déjà la régularité vidéo ; la certification refuse de conclure « stable » tant que les preuves de vitesse interne et de santé audio ne sont pas encore disponibles.
 - La CI vérifie le formatage, le lint et les tests du moteur sous Windows et Linux, construit les deux applications, les ouvre avec `--smoke-test`, puis fournit les paquets téléchargeables.
 - Limites : aucun jeu ni BIOS fourni ; calibration sur davantage de machines réelles encore nécessaire ; RetroArch reste à installer manuellement ; pas encore d'installateur Windows classique. Détails : `docs/prototype/README.fr.md`.
 

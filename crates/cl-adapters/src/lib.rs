@@ -112,6 +112,12 @@ pub trait EmulatorAdapter: Send + Sync {
     fn tuning_revision(&self) -> u32 {
         0
     }
+    /// Conservative rung used before a game has been certified. Most
+    /// adapters keep the hardware estimate; adapters with a known safe native
+    /// baseline can override it.
+    fn stability_first_step(&self, _system: SystemId, estimated: usize) -> usize {
+        estimated
+    }
     /// Executable names to look for on this OS.
     fn exe_names(&self) -> Vec<String>;
     /// Usual install locations to probe when no path is configured.

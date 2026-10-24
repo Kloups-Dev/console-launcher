@@ -2,13 +2,14 @@
 
 *[Version française](PERFORMANCE.fr.md)*
 
-Goal: every game runs at full speed, without stutter, at the best quality the machine allows, without the user having to adjust anything.
+Goal: every game runs like the original console, at full speed, without stutter or audio drop-outs. Extra quality is optional and must never compromise stability.
 
-## The principle in three steps
+## The stability-first principle
 
-1. **Simulation, before the first session.** The launcher detects the processor, memory and graphics card (through Vulkan), then runs a CPU test of about one second. The test runs a small code interpreter, the same kind of work as emulating a processor. From these data it picks a starting rung on the emulator's "quality ladder".
-2. **Real conditions, while playing.** Until the right setting is found, sessions are measured: MangoHud (Linux) or PresentMon (Windows) records the duration of every frame for 60 seconds, after 20 seconds of loading.
-3. **Adjustment.** If the session was smooth, the launcher tries the next rung up at the next session. If it stuttered, it goes back to the last smooth rung (or one rung down). It stops when a smooth rung sits right below a stuttering one. This takes at most as many sessions as the ladder has rungs (usually 5), and often 1 or 2.
+1. **Conservative start.** Dolphin starts at native rendering with a graphics backend chosen for the GPU. The hardware estimate still helps other adapters, but it can never prove stability by itself.
+2. **Real conditions.** MangoHud (Linux) or PresentMon (Windows) measures frame pacing for 60 seconds after 20 seconds of loading.
+3. **Certification.** Three independent signals are planned: frame pacing, actual emulation speed and audio-buffer health. A missing signal produces "insufficient evidence", not a false success. Any known failure produces "unstable".
+4. **Conservative adjustment.** An unstable profile moves down one rung. A certified profile stays on the tested rung: the launcher never raises resolution automatically. Users can still select higher quality manually.
 
 The result is specific to each game and saved in `profiles/<id>.json`. If the machine changes (another processor or graphics card), or an incompatible automatic policy is corrected, the search starts again.
 
@@ -25,7 +26,7 @@ The graphics API is selected automatically for the emulator, operating system an
 
 Dolphin's native rung uses specialized shaders, which suit modest GPUs. Higher rungs use Hybrid Ubershaders. Skip Drawing is excluded from automatic choices because it saves time by not drawing objects whose shader is not ready. The launcher also leaves Dual Core to Dolphin, preserving its per-game compatibility exceptions.
 
-## Smoothness criteria
+## Video criteria and certification
 
 A session is judged **smooth** when:
 - the average reaches at least 97 % of the console's refresh rate (60 or 50 frames/s);
@@ -35,6 +36,8 @@ A session is judged **smooth** when:
 During a measurement, the emulator presents every console refresh (Dolphin gets an option so it does not skip duplicate frames). Otherwise a game designed for 30 frames/s and a game running at half speed would give the same measurement.
 
 On Windows, PresentMon targets only the process ID started by the launcher. It does not track keyboard or mouse input. If no CSV is produced, its short local log is included in the session report so the failure is explainable instead of silent.
+
+These thresholds only produce the video verdict "smooth" or "stutters". Under the stability-first policy, that verdict alone does not certify a game: internal speed and audio-buffer underruns must also be known. Automatic collection of those signals is the next step; until then, a good video capture correctly produces "insufficient evidence".
 
 These thresholds are **starting values**. They will be confirmed or corrected after the first tests.
 
@@ -50,7 +53,7 @@ These thresholds are **starting values**. They will be confirmed or corrected af
 The estimate values (`crates/cl-perf/src/estimate.rs`) and the CPU test reference (`REFERENCE_NS` in `crates/cl-hwprobe/src/bench.rs`) have not been measured on real machines yet. Proposed protocol:
 
 1. On each test machine: `clctl probe --json > machine.json`.
-2. For 3 to 5 games per console: play with measurement on until the setting is found (`clctl plan` shows "settled").
+2. For 3 to 5 games per console: play with measurement on and keep the native rung until all three signals are available.
 3. Collect `hardware.json` and `profiles/*.json` (they hold the statistics of every session).
 4. Compare the estimated rung with the final rung. Adjust `required_cpu` and `gpu_budget` so the estimate is right in most cases.
 5. Record machines, games and results in a shared table before changing thresholds.
@@ -72,5 +75,5 @@ clctl analyse capture.csv --game "game name"
 ## Known limits
 
 - A game's first launch may stutter while shaders compile. The first 60 frames are ignored and measurement starts after 20 s, but a game that compiles a lot may be judged too harshly the first time.
-- Measurement only sees what reaches the screen. Audio-only slowdown is not detected.
+- PresentMon and MangoHud only see what reaches the screen. Certification therefore refuses to say "stable" until internal speed and audio are also collected.
 - On Windows, PresentMon needs a permission: **Settings › Smoothness check › Allow the measurement**, then sign out of Windows and back in (see [DEPENDENCIES.en.md](DEPENDENCIES.en.md)).
