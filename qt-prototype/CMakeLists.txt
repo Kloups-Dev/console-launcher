@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ConsoleLauncher VERSION 0.3.1 LANGUAGES CXX)
+project(ConsoleLauncher VERSION 0.3.2 LANGUAGES CXX)
 
 # Console Launcher — C++17 + Qt Quick interface. The functional QML shell is
 # compiled into the executable; controllers go through SDL2, and the Rust

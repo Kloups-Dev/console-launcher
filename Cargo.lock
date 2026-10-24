@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "cl-adapters"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-core",
  "log",
@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "cl-api"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-core",
  "cl-engine",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "cl-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "cl-adapters",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "cl-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "directories",
  "serde",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "cl-engine"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-adapters",
  "cl-core",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "cl-ffi"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-api",
  "env_logger",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "cl-hwprobe"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ash",
  "cl-core",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "cl-library"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-core",
  "serde",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "cl-perf"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-core",
  "serde",
@@ -321,7 +321,7 @@ dependencies = [
 
 [[package]]
 name = "cl-session"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-adapters",
  "cl-core",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "cl-updater"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cl-core",
  "log",
