@@ -6,7 +6,8 @@
 
 use crate::UpdateError;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use sha2::{Digest, Sha256};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
@@ -20,6 +21,14 @@ pub enum Source {
         /// …and end with one of these suffixes.
         windows_suffix: &'static [&'static str],
         linux_suffix: &'static [&'static str],
+    },
+    /// A release deliberately selected and hash-verified by the launcher.
+    /// Used when an emulator does not expose a suitable releases API.
+    Pinned {
+        version: &'static str,
+        asset_name: &'static str,
+        url: &'static str,
+        sha256: &'static str,
     },
     /// The user installs and updates the emulator; the page is shown.
     Manual { page: &'static str },
@@ -37,6 +46,12 @@ pub fn source_for(id: &str) -> Option<Source> {
             windows_suffix: &[".7z", ".zip"],
             linux_suffix: &[".appimage"],
         },
+        "dolphin" if cfg!(windows) => Source::Pinned {
+            version: "2609a",
+            asset_name: "dolphin-2609a-x64.7z",
+            url: "https://dl.dolphin-emu.org/releases/2609a/dolphin-2609a-x64.7z",
+            sha256: "BBFD13BF9E6D2A4164A15C392B1F32A9B18150E5136746B388704608FBB60F76",
+        },
         "dolphin" => Source::Manual {
             page: "https://dolphin-emu.org/download/",
         },
@@ -53,6 +68,9 @@ pub struct Release {
     pub asset_name: String,
     pub url: String,
     pub size: u64,
+    /// Expected archive hash for curated downloads.
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +105,21 @@ pub fn pick_asset<'a>(
 
 /// Latest stable release for this platform.
 pub fn latest(source: &Source) -> Result<Option<Release>, UpdateError> {
+    if let Source::Pinned {
+        version,
+        asset_name,
+        url,
+        sha256,
+    } = source
+    {
+        return Ok(Some(Release {
+            version: (*version).into(),
+            asset_name: (*asset_name).into(),
+            url: (*url).into(),
+            size: 0,
+            sha256: Some((*sha256).into()),
+        }));
+    }
     let Source::GitHub {
         owner,
         repo,
@@ -128,6 +161,7 @@ pub fn latest(source: &Source) -> Result<Option<Release>, UpdateError> {
         asset_name: asset.name.clone(),
         url: asset.browser_download_url.clone(),
         size: asset.size,
+        sha256: None,
     }))
 }
 
@@ -151,7 +185,18 @@ pub fn download(release: &Release, dir: &Path) -> Result<PathBuf, UpdateError> {
         .limit(4 * 1024 * 1024 * 1024)
         .reader();
     let mut file = std::fs::File::create(&partial)?;
-    let written = std::io::copy(&mut reader, &mut file)?;
+    let mut hash = Sha256::new();
+    let mut written = 0u64;
+    let mut buffer = [0u8; 128 * 1024];
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        written += count as u64;
+        hash.update(&buffer[..count]);
+        file.write_all(&buffer[..count])?;
+    }
     file.flush()?;
     if release.size > 0 && written != release.size {
         let _ = std::fs::remove_file(&partial);
@@ -159,6 +204,15 @@ pub fn download(release: &Release, dir: &Path) -> Result<PathBuf, UpdateError> {
             "incomplete download ({written}/{} bytes)",
             release.size
         )));
+    }
+    if let Some(expected) = &release.sha256 {
+        let actual = format!("{:X}", hash.finalize());
+        if !actual.eq_ignore_ascii_case(expected) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(UpdateError::Other(format!(
+                "archive hash mismatch (expected {expected}, got {actual})"
+            )));
+        }
     }
     std::fs::rename(&partial, &dest)?;
     Ok(dest)
@@ -184,5 +238,18 @@ mod tests {
             pick_asset(names, &["linux", "x64"], &[".appimage"]),
             Some("pcsx2-v2.2.0-linux-appimage-x64-Qt.AppImage")
         );
+    }
+
+    #[test]
+    fn dolphin_windows_release_is_curated() {
+        let source = source_for("dolphin").unwrap();
+        if cfg!(windows) {
+            let release = latest(&source).unwrap().unwrap();
+            assert_eq!(release.version, "2609a");
+            assert_eq!(release.sha256.as_deref().map(str::len), Some(64));
+            assert!(release.url.starts_with("https://dl.dolphin-emu.org/"));
+        } else {
+            assert!(matches!(source, Source::Manual { .. }));
+        }
     }
 }

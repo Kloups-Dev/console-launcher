@@ -18,9 +18,9 @@ Item {
     z: 1000
 
     // ---- Look ----
-    property color text: "#e8ecf4"
-    property color accent: "#ffc440"
-    property color panelColor: "#151a24"
+    property color text: "#171717"
+    property color accent: "#2864c7"
+    property color panelColor: "#f4f4f2"
 
     // ---- State ----
     property var ov: null            // settings_overview
@@ -31,6 +31,7 @@ Item {
     property string crumbs: ""
     property string toast: ""
     property var confirmRemove: null
+    property string pendingGamePath: ""
     property bool busy: false
 
     readonly property bool fr: Launcher.language.indexOf("fr") === 0
@@ -72,7 +73,7 @@ Item {
 
     // ---- Engine ----
     function call(method, params, done) {
-        Launcher.request(method, params || {}, function (ok, res) {
+        Launcher.internalRequest(method, params || {}, function (ok, res) {
             if (!ok) say("⚠ " + res);
             if (done) done(ok, res);
         });
@@ -96,6 +97,11 @@ Item {
         for (const c of ov.systems) if (c.info.id === id) return c.info.name;
         return id;
     }
+    function system(id) {
+        if (!ov) return null;
+        for (const c of ov.systems) if (c.info.id === id) return c;
+        return null;
+    }
 
     // ---- File pickers ----
     property var pickDone: null
@@ -113,46 +119,104 @@ Item {
     // ---- Pages ----
     function pageMain() {
         const c = ov.config;
-        const gpu = hw && hw.gpus && hw.gpus.length ? hw.gpus[0].name : "GPU ?";
-        let missing = 0;
-        for (const s of ov.systems) {
-            if (s.games === 0) continue;
-            const o = s.options.find(x => x.id === s.emulator);
-            if (!o || !o.found) missing++;
-        }
-        const found = ov.emulators.filter(e => e.found).length;
-        const themes = Launcher.themes;
         return {
-            title: t("Réglages", "Settings"),
+            title: t("Réglages de l’application", "Application settings"),
             items: [
-                row(t("Consoles et émulateurs", "Consoles and emulators"), missing ? missing + " " + no : yes, () => push("systems")),
-                row(t("Émulateurs", "Emulators"), found + " " + yes, () => push("emulators")),
-                row(t("Dossiers de jeux et d'émulateurs", "Game and emulator folders"), String(c.rom_dirs.length + c.emulator_dirs.length), () => push("folders")),
-                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
-                row(t("Optimisations système (priorité, GPU)", "System optimisations (priority, GPU)"), onOff(c.perf.system_tweaks), () => prefs({ systemTweaks: !c.perf.system_tweaks })),
-                row(t("Mesure de fluidité", "Smoothness check"), ov.capture.available ? yes : no, () => push("capture")),
-                row(t("Thème", "Theme"), esc(Launcher.theme), function () {
-                    const i = themes.indexOf(Launcher.theme);
-                    Launcher.setTheme(themes[(i + 1) % themes.length]);
-                }),
-                row(t("Langue", "Language"), fr ? "Français" : "English", () => prefs({ language: fr ? "en" : "fr" })),
-                block(t("Machine", "Machine"), hw ? esc(hw.cpu.brand + " · " + hw.ram_mb + " MB · " + gpu + " · score " + (hw.bench ? hw.bench.score : "?")) : "—"),
-                row(t("Refaire le test machine", "Re-run hardware test"), "↻", function () {
-                    say(t("Test en cours…", "Testing…"));
-                    call("hardware", { refresh: true }, function (ok, res) { if (ok) { hw = res; say(t("Test terminé.", "Done.")); render(); } });
-                }),
-                row(t("Plein écran", "Fullscreen"), "F11", () => Launcher.toggleFullscreen()),
-                row(t("Quitter le lanceur", "Quit the launcher"), "⏻", () => Launcher.quit()),
+                block(t("Application", "Application"), t(
+                    "Les réglages de cette partie s'appliquent au launcher entier.",
+                    "Settings in this section apply to the whole launcher.")),
+                row(t("Général", "General"), fr ? "Français" : "English", () => push("general")),
+                row(t("Contrôles", "Controls"), Launcher.padName || t("Clavier", "Keyboard"), () => push("controls")),
+                row(t("Bibliothèque et stockage", "Library and storage"), String(c.rom_dirs.length + c.emulator_dirs.length), () => push("folders")),
+                row(t("Performance et machine", "Performance and hardware"), onOff(c.perf.auto_tune), () => push("performance")),
+                block(t("Assistance", "Support"), ""),
+                row(t("État et diagnostic", "Status and diagnostics"), Launcher.lastError ? no : yes, () => push("diagnostics")),
                 row(t("Fermer", "Close"), "B", close),
                 block("", small("Console Launcher " + Launcher.version + " · " + esc(ov.dataDir)))
             ]
         };
     }
 
+    function pageGeneral() {
+        return {
+            title: t("Général", "General"),
+            items: [
+                block(t("Application", "Application"), t(
+                    "Ces choix concernent toutes les consoles et tous les émulateurs.",
+                    "These choices affect every console and emulator.")),
+                row(t("Langue", "Language"), fr ? "Français" : "English", () => prefs({ language: fr ? "en" : "fr" })),
+                row(t("Plein écran", "Fullscreen"), "F11", () => Launcher.toggleFullscreen()),
+                row(t("Contrôles du launcher", "Launcher controls"), Launcher.padName || t("Clavier", "Keyboard"), () => push("controls")),
+                row(t("Dossiers et bibliothèque", "Folders and library"), "›", () => push("folders")),
+                row(t("Quitter le launcher", "Quit the launcher"), "⏻", () => Launcher.quit()),
+                backRow()
+            ]
+        };
+    }
+
+    function pageControls() {
+        const device = Launcher.padName
+            ? yes + " " + esc(Launcher.padName)
+            : small(t("Aucune manette détectée — le clavier reste disponible.", "No controller detected — the keyboard remains available."));
+        return {
+            title: t("Contrôles", "Controls"),
+            items: [
+                block(t("Périphérique actif", "Active device"), device),
+                block(t("Navigation dans le launcher", "Launcher navigation"), t(
+                    "Déplacement : flèches ou croix directionnelle<br>Valider : Entrée ou A<br>Retour : Échap ou B<br>Réglages : Tab ou Start<br>Favori : F ou Y<br>Plein écran : F11",
+                    "Move: arrow keys or D-pad<br>Confirm: Enter or A<br>Back: Escape or B<br>Settings: Tab or Start<br>Favourite: F or Y<br>Fullscreen: F11")),
+                block(t("Contrôles en jeu", "In-game controls"), t(
+                    "Les touches d'un jeu dépendent de la console et de l'émulateur sélectionné. Leur configuration se trouve dans la fiche de l'émulateur concerné.",
+                    "Game controls depend on the console and selected emulator. Configure them from that emulator's page.")),
+                backRow()
+            ]
+        };
+    }
+
+    function pagePerformance() {
+        const c = ov.config;
+        const gpu = hw && hw.main_gpu ? hw.main_gpu.name
+                  : hw && hw.gpus && hw.gpus.length ? hw.gpus[0].name : "GPU ?";
+        return {
+            title: t("Performance et machine", "Performance and hardware"),
+            items: [
+                block(t("Réglages automatiques", "Automatic settings"), t(
+                    "Ces options servent de base à toutes les consoles. Les adaptations précises restent liées au jeu et à son émulateur.",
+                    "These options are the base for every console. Precise adaptations remain tied to each game and emulator.")),
+                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
+                row(t("Optimisations système (priorité, GPU)", "System optimisations (priority, GPU)"), onOff(c.perf.system_tweaks), () => prefs({ systemTweaks: !c.perf.system_tweaks })),
+                row(t("Mesure de fluidité", "Smoothness check"), ov.capture.available ? yes : no, () => push("capture")),
+                block(t("Machine détectée", "Detected hardware"), hw ? esc(hw.cpu.brand + " · " + hw.ram_mb + " MB · " + gpu + " · score " + (hw.bench ? hw.bench.score : "?")) : "—"),
+                row(t("Refaire le test machine", "Re-run hardware test"), "↻", function () {
+                    say(t("Test en cours…", "Testing…"));
+                    call("hardware", { refresh: true }, function (ok, res) { if (ok) { hw = res; say(t("Test terminé.", "Done.")); render(); } });
+                }),
+                backRow()
+            ]
+        };
+    }
+
+    function pageDiagnostics() {
+        const found = ov.emulators.filter(e => e.found).length;
+        return {
+            title: t("État et diagnostic", "Status and diagnostics"),
+            items: [
+                block(t("Application", "Application"), yes + " " + t("Moteur prêt", "Engine ready") + "<br>" +
+                      esc(ov.systems.length) + " " + t("consoles prises en charge", "supported consoles") + "<br>" +
+                      esc(found) + " " + t("émulateur(s) détecté(s)", "emulator(s) detected")),
+                block(t("Dernière erreur", "Last error"), Launcher.lastError ? esc(Launcher.lastError) : yes + " " + t("Aucune", "None")),
+                row(t("Mesure de fluidité", "Smoothness check"), ov.capture.available ? yes : no, () => push("capture")),
+                row(t("Émulateurs", "Emulators"), "›", () => push("emulators")),
+                block(t("Dossier de données", "Data folder"), code(ov.dataDir)),
+                backRow()
+            ]
+        };
+    }
+
     function pageSystems() {
         const items = [block("", t(
-            "Choisis l'émulateur de chaque console (← → ou A). « Auto » prend le premier émulateur installé, dans l'ordre de préférence.",
-            "Choose the emulator of each console (← → or A). \"Auto\" takes the first installed emulator, in order of preference."))];
+            "Ouvre une console pour retrouver sa bibliothèque, son émulateur et ses réglages adaptés.",
+            "Open a console to find its library, emulator and tailored settings."))];
         let shownEmpty = false;
         for (const c of ov.systems) {
             if (c.games === 0 && !shownEmpty) {
@@ -161,23 +225,49 @@ Item {
             }
             const cur = c.options.find(o => o.id === c.emulator);
             const value = esc(cur ? cur.name : c.emulator) + " " + (cur && cur.found ? yes : no) + (c.automatic ? " " + small("auto") : "");
-            const choices = [null].concat(c.options.map(o => o.id));
-            const cycle = function (d) {
-                const i = c.automatic ? 0 : Math.max(0, choices.indexOf(c.emulator));
-                const next = choices[(i + d + choices.length) % choices.length];
-                call("set_system_emulator", { system: c.info.id, id: next }, function (ok) {
-                    if (!ok) return;
-                    const o = c.options.find(x => x.id === next);
-                    say(c.info.name + " → " + (next ? o.name : "Auto"));
-                    reload(render);
-                    libraryChanged();
-                });
-            };
             items.push(row(esc(c.info.name) + " " + small(c.games + " " + t("jeux", "games")), value,
-                           () => cycle(1), { left: () => cycle(-1), right: () => cycle(1), dim: c.games === 0 }));
+                           (id => () => push("system", id))(c.info.id), { dim: c.games === 0 }));
         }
         items.push(backRow());
-        return { title: t("Consoles et émulateurs", "Consoles and emulators"), items: items };
+        return { title: t("Consoles", "Consoles"), items: items };
+    }
+
+    function pageSystem(id) {
+        const c = system(id);
+        if (!c) return pageSystems();
+        const current = c.options.find(o => o.id === c.emulator);
+        const choices = [null].concat(c.options.map(o => o.id));
+        const cycle = function (d) {
+            const i = c.automatic ? 0 : Math.max(0, choices.indexOf(c.emulator));
+            const next = choices[(i + d + choices.length) % choices.length];
+            call("set_system_emulator", { system: c.info.id, id: next }, function (ok) {
+                if (!ok) return;
+                const option = c.options.find(x => x.id === next);
+                say(c.info.name + " → " + (next && option ? option.name : "Auto"));
+                reload(render);
+                libraryChanged();
+            });
+        };
+        const emulatorValue = esc(current ? current.name : c.emulator) + " " +
+            (current && current.found ? yes : no) + (c.automatic ? " " + small("auto") : "");
+        const items = [
+            block(t("Bibliothèque", "Library"), esc(c.games) + " " + t("jeu(x)", "game(s)") + " · " +
+                  small((c.info.extensions || []).map(x => "." + esc(x)).join("  "))),
+            block(t("Émulation", "Emulation"), t(
+                "« Auto » choisit le premier émulateur compatible installé. Utilise gauche/droite ou valide pour changer.",
+                "Auto selects the first installed compatible emulator. Use left/right or confirm to change.")),
+            row(t("Émulateur utilisé", "Selected emulator"), emulatorValue,
+                () => cycle(1), { left: () => cycle(-1), right: () => cycle(1) })
+        ];
+        if (current)
+            items.push(row(t("Configurer " + current.name + "…", "Configure " + current.name + "…"), "›",
+                           () => push("emulator", current.id)));
+        items.push(block(t("Réglages adaptés à cette console", "Settings tailored to this console"), t(
+            "Le launcher applique au lancement le profil compatible avec cette console, puis l'adapte à la puissance de la machine et aux mesures du jeu. Les options très spécifiques restent dans la fiche de l'émulateur pour éviter de surcharger cet écran.",
+            "At launch, the launcher applies the profile compatible with this console, then adapts it to the machine and the game's measurements. Very specific options stay on the emulator page to keep this screen clear.")));
+        items.push(row(t("Jeux et dossiers", "Games and folders"), "›", () => push("folders")));
+        items.push(backRow());
+        return { title: esc(c.info.name), items: items };
     }
 
     function pageEmulators() {
@@ -201,6 +291,34 @@ Item {
         items.push(block(t("Exécutable", "Executable"), e.path
             ? code(e.path) + (e.configured_path ? "" : " " + small("(" + t("détecté", "detected") + ")"))
             : no + " " + t("introuvable", "not found") + (e.configured_path ? "<br>" + code(e.configured_path) : "")));
+        if (e.managed_version)
+            items.push(block(t("Version installée par le launcher", "Version installed by the launcher"),
+                             yes + " " + esc(e.managed_version) + " " + small(t("vérifiée et active", "verified and active"))));
+        if (e.automatic_install && (!e.managed_version || !e.install_version || e.managed_version !== e.install_version)) {
+            const version = e.install_version ? " " + e.install_version : "";
+            items.push(row(t("Installer directement " + e.name + version, "Install " + e.name + version + " directly"), "↓", function () {
+                if (busy) return;
+                busy = true;
+                say(t("Téléchargement et vérification en cours…", "Downloading and verifying…"));
+                render();
+                call("install_emulator", { id: id }, function (ok, result) {
+                    busy = false;
+                    if (!ok) { render(); return; }
+                    say(t(result.emulator + " " + result.version + " est installé et prêt.",
+                          result.emulator + " " + result.version + " is installed and ready."));
+                    reload(render);
+                    libraryChanged();
+                });
+            }));
+        }
+        if (!e.found && e.download_page) {
+            items.push(row(t("Télécharger " + e.name + " sur le site officiel…",
+                             "Download " + e.name + " from the official website…"), "↗", function () {
+                Qt.openUrlExternally(e.download_page);
+                say(t("Page officielle ouverte. Après l’installation, choisis l’exécutable ci-dessous.",
+                      "Official page opened. After installation, choose the executable below."));
+            }));
+        }
         items.push(row(t("Choisir l'exécutable…", "Choose the executable…"), "📂", function () {
             pickFile(e.name, function (p) {
                 if (!p) return;
@@ -295,7 +413,21 @@ Item {
             confirmRemove = null;
             call("remove_path", { path: p }, function (ok) { if (ok) { say(t("Retiré.", "Removed.")); reload(render); libraryChanged(); } });
         }, { danger: confirmRemove === p });
-        const items = [block(t("Dossiers de jeux", "Game folders"), c.rom_dirs.length ? "" : "—")];
+        const removeGame = g => row(code(g.path) + " " + small(sysName(g.system)), confirmRemove === g.path ? t("Confirmer ?", "Confirm?") : "✕", function () {
+            if (confirmRemove !== g.path) { confirmRemove = g.path; return; }
+            confirmRemove = null;
+            call("remove_game", { path: g.path }, function (ok) { if (ok) { say(t("Jeu retiré.", "Game removed.")); reload(render); libraryChanged(); } });
+        }, { danger: confirmRemove === g.path });
+        const items = [block(t("Jeux ajoutés directement", "Games added directly"), c.imported_games.length ? "" : "—")];
+        for (const g of c.imported_games) items.push(removeGame(g));
+        items.push(row(t("+ Ajouter un jeu…", "+ Add a game…"), "📄", function () {
+            pickFile(t("Choisir un fichier de jeu", "Choose a game file"), function (p) {
+                if (!p) return;
+                pendingGamePath = p;
+                push("gameSystem", p);
+            });
+        }));
+        items.push(block(t("Dossiers de jeux", "Game folders"), c.rom_dirs.length ? "" : "—"));
         for (const p of c.rom_dirs) items.push(removable(p));
         items.push(block(t("Dossiers d'émulateurs", "Emulator folders"), c.emulator_dirs.length ? "" : t(
             "— (le dossier « emulators » à côté d'un dossier « roms » est cherché tout seul)",
@@ -311,6 +443,30 @@ Item {
             items.push(block(t("Cherchés en ce moment", "Searched right now"), ov.emulatorDirsSearched.map(code).join("<br>")));
         items.push(backRow());
         return { title: t("Dossiers", "Folders"), items: items };
+    }
+
+    function pageGameSystem(path) {
+        const dot = path.lastIndexOf(".");
+        const ext = dot >= 0 ? path.slice(dot + 1).toLowerCase() : "";
+        const choices = ov.systems.filter(s => s.info.extensions.indexOf(ext) >= 0);
+        const items = [block(t("Ce fichier appartient à quelle console ?", "Which console is this file for?"), code(path))];
+        for (const s of choices) {
+            items.push(row(esc(s.info.name), ext.toUpperCase(), function () {
+                call("add_game", { path: path, system: s.info.id }, function (ok) {
+                    if (!ok) return;
+                    pendingGamePath = "";
+                    say(t("Jeu ajouté.", "Game added."));
+                    libraryChanged();
+                    reload(pop);
+                });
+            }));
+        }
+        if (!choices.length)
+            items.push(block(t("Format non reconnu", "Unknown format"), t(
+                "Aucune console prise en charge ne correspond à ce fichier.",
+                "No supported console matches this file.")));
+        items.push(backRow());
+        return { title: t("Console du jeu", "Game console"), items: items };
     }
 
     function pageCapture() {
@@ -349,8 +505,10 @@ Item {
     }
 
     readonly property var pages: ({
-        main: pageMain, systems: pageSystems, emulators: pageEmulators, emulator: pageEmulator,
-        customSystems: pageCustomSystems, folders: pageFolders, capture: pageCapture
+        main: pageMain, general: pageGeneral, controls: pageControls, performance: pagePerformance,
+        diagnostics: pageDiagnostics, systems: pageSystems, system: pageSystem,
+        emulators: pageEmulators, emulator: pageEmulator,
+        customSystems: pageCustomSystems, folders: pageFolders, gameSystem: pageGameSystem, capture: pageCapture
     })
 
     function prefs(update) {
@@ -417,6 +575,7 @@ Item {
         return -1;
     }
     function activate(dir) {
+        if (busy) return;
         const page = currentPage();
         const it = focusables()[page.index];
         if (!it) return;
@@ -431,6 +590,7 @@ Item {
         if (Launcher.settingsOpen) render();
     }
     function nav(a) {
+        if (busy) return;
         const page = currentPage();
         if (!page) return;
         const n = focusables().length;
@@ -452,6 +612,7 @@ Item {
         reload(function () {
             busy = false;
             if (target && target.emulator) push("emulator", target.emulator);
+            else if (target && target.system) push("system", target.system);
             else if (target && target.page && pages[target.page]) push(target.page);
             else render();
         });
@@ -469,23 +630,77 @@ Item {
     }
 
     // ---- Drawing ----
-    Rectangle { anchors.fill: parent; color: Qt.rgba(0.02, 0.03, 0.05, 0.78) }
+    Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.18) }
     MouseArea { anchors.fill: parent }   // blocks clicks to the theme
 
     Rectangle {
         id: panel
-        anchors.centerIn: parent
-        width: Math.min(760, root.width * 0.92)
-        height: Math.min(root.height * 0.9, header.height + list.contentHeight + footer.height + 48)
-        radius: 16
+        anchors.fill: parent
+        anchors.margins: 14
+        radius: 0
         color: root.panelColor
-        border.color: "#2a3244"
+        border.color: "#bcbcb7"
 
-        Column {
+        Item {
             id: header
-            x: 24; y: 20; width: parent.width - 48; spacing: 2
-            Text { visible: root.crumbs !== ""; text: root.crumbs; textFormat: Text.StyledText; color: root.text; opacity: 0.55; font.pixelSize: 12 }
-            Text { text: root.busy ? "…" : root.pageTitle; textFormat: Text.StyledText; color: root.text; font.pixelSize: 21; font.weight: Font.DemiBold; bottomPadding: 10 }
+            x: 24; y: 14; width: parent.width - 48; height: 70
+
+            Rectangle {
+                id: backButton
+                visible: root.stack.length > 1
+                x: 0; y: 18; width: 42; height: 38
+                radius: 6
+                color: backMouse.containsMouse ? "#dededb" : "transparent"
+                border.color: "#bcbcb7"
+                Accessible.role: Accessible.Button
+                Accessible.name: root.t("Retour", "Back")
+                Text {
+                    anchors.centerIn: parent
+                    text: "←"
+                    color: root.text
+                    font.pixelSize: 22
+                }
+                MouseArea {
+                    id: backMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.pop()
+                }
+            }
+
+            Item {
+                x: backButton.visible ? 54 : 0
+                y: 0
+                width: header.width - x - closeButton.width - 14
+                height: header.height
+                Text { x: 0; y: 0; width: parent.width; height: 18; visible: root.crumbs !== ""; text: root.crumbs; textFormat: Text.StyledText; elide: Text.ElideLeft; color: root.text; opacity: 0.55; font.pixelSize: 12 }
+                Text { x: 0; y: 24; width: parent.width; text: root.busy ? "…" : root.pageTitle; textFormat: Text.StyledText; elide: Text.ElideRight; color: root.text; font.pixelSize: 21; font.weight: Font.DemiBold }
+            }
+
+            Rectangle {
+                id: closeButton
+                anchors.right: parent.right
+                y: 18; width: 42; height: 38
+                radius: 6
+                color: closeMouse.containsMouse ? "#dededb" : "transparent"
+                border.color: "#bcbcb7"
+                Accessible.role: Accessible.Button
+                Accessible.name: root.t("Fermer les réglages", "Close settings")
+                Text {
+                    anchors.centerIn: parent
+                    text: "×"
+                    color: root.text
+                    font.pixelSize: 22
+                }
+                MouseArea {
+                    id: closeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.close()
+                }
+            }
         }
 
         ListView {
@@ -515,13 +730,13 @@ Item {
         Rectangle {
             id: footer
             anchors.bottom: parent.bottom; anchors.bottomMargin: 1
-            x: 1; width: parent.width - 2; height: toastBox.visible ? 92 : 44
-            color: root.panelColor; radius: 16
+            x: 1; width: parent.width - 2; height: 92
+            color: root.panelColor; radius: 0
             Rectangle {
                 id: toastBox
                 visible: root.toast !== ""
                 x: 23; y: 0; width: parent.width - 46; height: 40; radius: 10
-                color: "#2b3550"
+                color: "#dce8fa"
                 Text { anchors.fill: parent; anchors.margins: 10; text: root.toast; color: root.text; font.pixelSize: 13; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
             }
             Row {
@@ -532,7 +747,7 @@ Item {
                     model: [["A", root.t("Choisir", "Select")], ["← →", root.t("Changer", "Change")], ["B", root.t("Retour", "Back")]]
                     Row {
                         spacing: 6
-                        Rectangle { width: k.implicitWidth + 12; height: 20; radius: 6; color: "#2a3244"
+                        Rectangle { width: k.implicitWidth + 12; height: 20; radius: 6; color: "#dededb"
                                     Text { id: k; anchors.centerIn: parent; text: modelData[0]; color: root.text; font.pixelSize: 12 } }
                         Text { text: modelData[1]; color: root.text; opacity: 0.8; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
                     }

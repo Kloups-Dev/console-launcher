@@ -1,5 +1,14 @@
 # Créer un thème
 
+> **État actuel : thèmes externes désactivés.** L'application charge uniquement
+> l'interface QML compilée dans l'exécutable. Les anciens points d'entrée
+> `Main.qml` ont été retirés et ne sont plus exécutés. Le
+> futur format Theme v1 sera un paquet de données validé (manifeste, couleurs,
+> polices, images et sons), avec l'interface fonctionnelle intégrée comme repli.
+> Cette décision évite qu'un thème puisse appeler le moteur ou casser le
+> démarrage. La suite de ce document décrit l'ancien prototype et ne constitue
+> plus une API prise en charge.
+
 *[English version](THEMES.en.md)*
 
 Un thème est un dossier qui contient un fichier `Main.qml`, écrit en QML, le langage déclaratif de Qt Quick. Il décide de **tout** ce qui est à l'écran : disposition, couleurs, animations, sons, ordre des menus. Le lanceur fournit les données (consoles, jeux, jaquettes, réglages) et les actions de la manette. Le thème n'a jamais besoin de savoir quel émulateur est utilisé.

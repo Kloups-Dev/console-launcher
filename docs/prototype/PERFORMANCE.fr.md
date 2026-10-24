@@ -10,7 +10,7 @@ Objectif : que chaque jeu tourne à pleine vitesse, sans saccades, avec la meill
 2. **Conditions réelles, pendant les parties.** Tant que le bon réglage n'est pas trouvé, la partie est mesurée : MangoHud (Linux) ou PresentMon (Windows) enregistre la durée de chaque image pendant 60 secondes, après 20 secondes de chargement.
 3. **Ajustement.** Si la partie a été fluide, le lanceur essaie le palier supérieur à la partie suivante. Si elle a saccadé, il revient au dernier palier fluide (ou descend d'un cran). Il s'arrête quand un palier fluide se trouve juste sous un palier qui saccade. Cela prend au plus autant de parties que l'échelle a de paliers (5 en général), et souvent 1 ou 2.
 
-Le résultat est propre à chaque jeu et enregistré dans `profiles/<id>.json`. Si la machine change (autre processeur ou autre carte graphique), la recherche recommence.
+Le résultat est propre à chaque jeu et enregistré dans `profiles/<id>.json`. Si la machine change (autre processeur ou autre carte graphique), ou si une politique automatique incompatible est corrigée, la recherche recommence.
 
 ## Échelles de qualité (v0.1)
 
@@ -21,7 +21,9 @@ Le résultat est propre à chaque jeu et enregistré dans `profiles/<id>.json`. 
 | RetroArch (consoles légères) | Eco · Standard · Faible latence · Latence minimale | Run-ahead (1 à 2 images) : moins de latence, en échange de plus de calcul CPU |
 | RetroArch (N64, DS, PSP) | Eco · Standard | Run-ahead désactivé, trop coûteux |
 
-L'API graphique est choisie automatiquement : Vulkan si disponible, sinon Direct3D sous Windows ou OpenGL.
+L'API graphique est choisie automatiquement selon l'émulateur, le système et le fabricant du GPU. Pour Dolphin sous Windows : Vulkan est privilégié sur AMD, D3D12 sur Intel et D3D11 sur NVIDIA afin d'éviter le couple Hybrid/Vulkan connu pour saccader sur ce pilote. Un fabricant inconnu reçoit le choix prudent D3D11. Sous Linux, OpenGL est préféré à Vulkan pour Intel et NVIDIA dans le profil stabilité-d'abord ; AMD conserve Vulkan.
+
+Le palier natif de Dolphin utilise les shaders spécialisés, adaptés aux GPU modestes. Les paliers supérieurs utilisent les ubershaders hybrides. Le mode « Skip Drawing » est exclu des choix automatiques car il gagne du temps en ne dessinant pas les objets dont le shader n'est pas prêt. Le lanceur ne force pas non plus le double cœur : Dolphin conserve ainsi ses exceptions de compatibilité propres à chaque jeu.
 
 ## Critères de fluidité
 
@@ -31,6 +33,8 @@ Une session est jugée **fluide** si :
 - moins de 1 % des images durent plus de 1,5 fois le temps prévu.
 
 Pendant une mesure, l'émulateur affiche chaque rafraîchissement de la console (Dolphin reçoit une option pour ne pas sauter les images en double). Sans cela, un jeu prévu pour 30 images/s et un jeu qui tourne à mi-vitesse donneraient la même mesure.
+
+Sous Windows, PresentMon cible uniquement l'identifiant du processus que le lanceur vient de démarrer. Il ne suit pas les entrées clavier/souris. S'il ne produit aucun CSV, son court journal local est repris dans le compte rendu de la partie afin que l'échec soit explicable au lieu d'être silencieux.
 
 Ces seuils sont **des valeurs de départ**. Ils seront confirmés ou corrigés après les premiers essais.
 
@@ -60,7 +64,7 @@ clctl analyse capture.csv --game "nom du jeu"
 
 ## Points à vérifier sur les vraies versions des émulateurs
 
-- Dolphin : valeurs de `ShaderCompilationMode` et nom de la clé `SkipPresentingDuplicateFrames`.
+- Dolphin : confirmer sur la version réellement fournie le nom de la clé de mesure `SkipPresentingDuplicateFrames`.
 - PCSX2 : numéros de `Renderer` (14 = Vulkan, 3 = D3D11, 15 = D3D12, 12 = OpenGL) et lancement avec `-batch -nogui`.
 - PresentMon 2.x : options de ligne de commande utilisées (`--process_name`, `--timed`, `--terminate_after_timed`, `--v1_metrics`).
 - MangoHud : options `autostart_log` et `log_duration`.

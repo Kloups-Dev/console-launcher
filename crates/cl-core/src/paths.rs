@@ -45,6 +45,19 @@ impl Paths {
     pub fn captures_dir(&self) -> PathBuf {
         self.root.join("captures")
     }
+    /// Metadata resolved by serial/checksum. Kept separate from user settings
+    /// so it can be refreshed or rebuilt without losing configuration.
+    pub fn metadata_cache_file(&self) -> PathBuf {
+        self.root.join("metadata").join("catalogue.json")
+    }
+    /// File fingerprints keyed by path, size and modification time.
+    pub fn identity_cache_file(&self) -> PathBuf {
+        self.root.join("metadata").join("identities.json")
+    }
+    /// Artwork downloaded explicitly by the user and kept for offline use.
+    pub fn artwork_cache_dir(&self) -> PathBuf {
+        self.root.join("metadata").join("artwork")
+    }
     /// User themes (built-in templates are copied here on first start).
     pub fn themes_dir(&self) -> PathBuf {
         self.root.join("themes")

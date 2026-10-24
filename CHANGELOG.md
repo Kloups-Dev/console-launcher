@@ -4,6 +4,58 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
+## [Unreleased]
+
+### English
+
+**Added**
+- Explicit metadata refresh now downloads exact GameCube/Wii, Nintendo DS and Wii U front covers from GameTDB into a validated offline PNG/JPEG cache. Regional editions are matched by their game id instead of blindly using the first link. The original URL and artwork provider remain recorded, and a missing cover never prevents the game details from being saved.
+- Raw Wii U WUD images now expose their embedded four-character product id for exact catalogue matching; compressed WUX/WUA containers remain conservative filename matches until a dedicated reader is added.
+- A provider-neutral game metadata foundation: local serial/CRC identity, an offline catalogue cache, rich provenance-aware fields for publisher/date/genres/artwork, and a documented safe model for revision-specific patches. The library already identifies raw GameCube/Wii discs, Nintendo DS files and small cartridge images without relying on filenames.
+- A plain desktop interface rebuilt from the original functional workshop replaces the experimental presentation for now: one permanent library workspace with a console catalogue, visible game and folder actions, search, preparation and launch. One conventional Settings entry opens the full-window settings hierarchy; administrative pages no longer compete with the library as top-level tabs. Both theme entries use this same functional base until visual themes are designed later.
+- An individual game file can be added from Settings; the launcher asks for its console when several systems share the same extension.
+- Windows can install the clearly identified Dolphin 2609a release directly from Dolphin's official server. The archive's SHA-256 digest is checked before extraction and the managed copy is selected automatically.
+
+**Changed**
+- The interface never renders a remote artwork URL directly. Covers are shown only after the engine has validated and cached them; a clear retry message replaces the silent empty-cover state when caching fails.
+- GameTDB edition selection now understands four-character product codes embedded in longer retail box serials and pairs them with the correct six-character artwork id, preventing mixed region/id URLs such as an Australian folder with a US disc id.
+- The Performance page now displays the GPU actually selected for emulation (discrete GPU first) instead of whichever graphics adapter happened to be enumerated first.
+- Windows smoothness checks now target the exact emulator process ID instead of every process with the same name, stop when that process exits, and disable unneeded keyboard/mouse input tracking. PresentMon output is retained as a short local diagnostic when no frame capture is produced.
+- Dolphin's automatic profile is now stability-first: it never uses Skip Drawing (which can hide objects), no longer forces Dual Core over Dolphin's per-game compatibility choices, and selects a conservative initial graphics backend for Intel, AMD and NVIDIA GPUs. Existing Dolphin tuning profiles are safely recalculated once under this new policy.
+- Selecting a game without cached details now starts its metadata and cover lookup automatically after a short delay. Only the selected game is queried; the manual button remains as Refresh/Retry and startup still does not bulk-download the library.
+- The left catalogue always shows all 15 supported consoles, whether or not games or emulators are detected. Selecting one now shows its emulator status and the relevant install/download action directly in the right-hand workspace. Emulator installation is no longer presented as a general application setting.
+- Settings subpages now have a permanent mouse-accessible Back arrow in the header, and every settings page has a permanent Close button. Keyboard and controller navigation remain unchanged.
+- The desktop interface now starts from a separate clean Qt `ApplicationWindow` foundation. Qt owns the menu bar, toolbar, resizable split workspace and status bar, preventing the overlaps and unstable menu placement caused by the former manually-positioned shell. The previous workshop shell is kept only as an unreferenced local fallback.
+- The main window now follows the conventional desktop structure: File/Edit/View/Help menu bar, focused command toolbar, library work area and status bar. Duplicate commands were removed from the content, while selection-specific actions stay next to the selected system or game.
+- Emulator detection also reuses compatible installations from the previous C# prototype's local data folder.
+- The launcher now loads only its QML interface compiled into the executable. External `Main.qml` files are no longer executed or packaged; the engine bridge is private to the built-in interface, and stale asynchronous library responses are ignored.
+- Settings now follow a stable hierarchy: application-wide settings (general, controls, library, performance), then consoles, then each console's emulator and tailored behaviour. Diagnostics and emulator management have dedicated sections, and direct links open the relevant console page.
+
+### Français
+
+**Ajouts**
+- L'actualisation explicite d'une fiche télécharge aussi la jaquette avant exacte GameCube/Wii, Nintendo DS et Wii U depuis GameTDB dans un cache PNG/JPEG hors ligne vérifié. L'édition régionale est choisie par son identifiant de jeu au lieu de prendre aveuglément le premier lien. L'URL et la source de l'illustration restent enregistrées ; une jaquette absente n'empêche jamais de sauvegarder la fiche.
+- Les images disque Wii U brutes au format WUD exposent maintenant leur identifiant produit de quatre caractères pour une correspondance exacte avec le catalogue ; les conteneurs compressés WUX/WUA restent prudemment basés sur le nom jusqu'à l'ajout d'un lecteur dédié.
+- Un socle de métadonnées indépendant des fournisseurs : identité locale par série/CRC, cache de catalogue hors ligne, champs riches avec provenance pour éditeur/date/genres/illustrations, et modèle documenté pour des patches sûrs liés à une révision précise. La bibliothèque identifie déjà les disques GameCube/Wii bruts, les fichiers Nintendo DS et les petites cartouches sans dépendre du nom de fichier.
+- Une interface de bureau simple, reconstruite à partir de l'atelier fonctionnel d'origine, remplace provisoirement la présentation expérimentale : un espace Bibliothèque permanent avec catalogue des consoles, actions visibles pour les jeux et dossiers, recherche, préparation et lancement. Une seule entrée Réglages ouvre la hiérarchie en plein écran ; les pages administratives ne concurrencent plus la bibliothèque sous forme d'onglets principaux. Les deux entrées de thème utilisent cette même base fonctionnelle jusqu'à la création ultérieure des thèmes visuels.
+- Un fichier de jeu précis peut être ajouté depuis les réglages ; le launcher demande sa console quand plusieurs systèmes utilisent la même extension.
+- Sous Windows, Dolphin 2609a, clairement identifié, peut être installé directement depuis le serveur officiel de Dolphin. L'empreinte SHA-256 de l'archive est vérifiée avant l'extraction et la copie gérée est sélectionnée automatiquement.
+
+**Modifications**
+- L'interface n'affiche jamais directement une adresse d'illustration distante. Une jaquette n'apparaît qu'après validation et mise en cache par le moteur ; si cette étape échoue, un message clair propose de réessayer au lieu de laisser un cadre vide sans explication.
+- La sélection d'édition GameTDB reconnaît maintenant les codes produit de quatre caractères inclus dans les longues séries des boîtes et les relie au bon identifiant d'illustration à six caractères. Elle évite ainsi de mélanger, par exemple, un dossier australien avec un identifiant de disque américain.
+- La page Performance affiche maintenant le GPU réellement retenu pour l'émulation (carte dédiée en priorité), au lieu du premier adaptateur graphique trouvé dans un ordre technique quelconque.
+- Sous Windows, la mesure de fluidité cible maintenant l'identifiant exact du processus d'émulation au lieu de tous les processus portant le même nom, s'arrête avec ce processus et désactive le suivi inutile des entrées clavier/souris. La sortie de PresentMon reste disponible comme court diagnostic local si aucune capture d'images n'est produite.
+- Le profil automatique de Dolphin privilégie désormais la stabilité : il n'utilise jamais « Skip Drawing » (qui peut masquer des objets), ne force plus le double cœur par-dessus les choix de compatibilité par jeu de Dolphin et choisit un moteur graphique initial prudent selon le GPU Intel, AMD ou NVIDIA. Les anciens profils Dolphin sont recalculés une fois avec cette nouvelle politique.
+- La sélection d'un jeu sans fiche en cache déclenche maintenant automatiquement sa recherche et celle de sa jaquette après un court délai. Seul le jeu sélectionné est interrogé ; le bouton manuel reste disponible pour actualiser/réessayer et le démarrage ne télécharge pas toute la bibliothèque.
+- Le catalogue de gauche affiche toujours les 15 consoles prises en charge, même sans jeu ni émulateur détecté. La sélection d’une console affiche désormais à droite l’état de son émulateur et l’action d’installation ou de téléchargement adaptée. L’installation des émulateurs n’est plus présentée comme un réglage général de l’application.
+- Les sous-pages des réglages disposent maintenant d'une flèche Retour permanente et utilisable à la souris dans leur en-tête. Toutes les pages des réglages ont aussi un bouton Fermer permanent ; la navigation clavier et manette reste inchangée.
+- L'interface de bureau repart sur une fondation Qt `ApplicationWindow` séparée et propre. Qt gère directement la barre de menus, la barre d'outils, l'espace redimensionnable et la barre d'état, ce qui évite les superpositions et le placement instable des menus de l'ancienne coque positionnée à la main. L'ancien atelier reste seulement comme sauvegarde locale non chargée.
+- La fenêtre principale suit maintenant la structure classique d'un logiciel de bureau : menus Fichier/Modifier/Affichage/Aide, barre d'outils limitée aux commandes fréquentes, espace Bibliothèque et barre d'état. Les commandes dupliquées ont été retirées du contenu, tandis que les actions liées à une sélection restent près de la console ou du jeu concerné.
+- La détection des émulateurs réutilise aussi les installations compatibles présentes dans le dossier local de l'ancien prototype C#.
+- Le lanceur charge désormais uniquement son interface QML compilée dans l'exécutable. Les fichiers `Main.qml` externes ne sont plus exécutés ni inclus dans le paquet ; la passerelle du moteur est privée à l'interface intégrée et les réponses asynchrones périmées de la bibliothèque sont ignorées.
+- Les réglages suivent maintenant une hiérarchie stable : réglages communs à l'application (général, contrôles, bibliothèque, performance), puis consoles, puis émulateur et comportement adapté à chaque console. Le diagnostic et la gestion des émulateurs ont leurs propres sections, et les raccourcis ouvrent directement la fiche de la console concernée.
+
 ## [0.3.1] — 2026-10-23 — Windows start-up fix
 
 ### English

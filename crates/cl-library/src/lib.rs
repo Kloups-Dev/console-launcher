@@ -15,13 +15,18 @@
 //! SNES, but `.iso` is ambiguous). Emulator, BIOS and save folders are
 //! skipped, so pointing the launcher at a whole RetroBat folder works.
 
-use cl_core::{Game, SystemId};
+use cl_core::{Game, GameIdentity, GameMetadata, SystemId};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+pub mod provider;
+
 const MAX_DEPTH: usize = 4;
+const MAX_CRC_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Folders that never contain games (emulators, firmware, saves, media…).
 const SKIPPED_DIRS: [&str; 22] = [
@@ -127,8 +132,235 @@ fn find_cover(path: &Path, system_root: Option<&Path>) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+fn ascii_id(bytes: &[u8]) -> Option<String> {
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric())
+        .then(|| String::from_utf8_lossy(bytes).to_ascii_uppercase())
+}
+
+fn header_serial(system: SystemId, path: &Path) -> Option<String> {
+    let ext = ext_of(path)?;
+    let mut file = File::open(path).ok()?;
+    match system {
+        // Raw GameCube and Wii images carry their six-character disc id at
+        // offset zero. Compressed RVZ/WBFS containers need an emulator-backed
+        // reader and deliberately fall back to filename matching for now.
+        SystemId::GameCube | SystemId::Wii if matches!(ext.as_str(), "iso" | "gcm") => {
+            let mut id = [0u8; 6];
+            file.read_exact(&mut id).ok()?;
+            ascii_id(&id)
+        }
+        // Nintendo DS stores its four-character game code at 0x0c.
+        SystemId::Nds if ext == "nds" => {
+            file.seek(SeekFrom::Start(0x0c)).ok()?;
+            let mut id = [0u8; 4];
+            file.read_exact(&mut id).ok()?;
+            ascii_id(&id)
+        }
+        // Retail Wii U disc images start with `WUP-P-` followed by the
+        // four-character product id used by catalogue services. WUX/WUA are
+        // containers and deliberately remain filename-only until they have a
+        // dedicated parser.
+        SystemId::WiiU if ext == "wud" => {
+            let mut header = [0u8; 10];
+            file.read_exact(&mut header).ok()?;
+            (header.starts_with(b"WUP-P-"))
+                .then(|| ascii_id(&header[6..10]))
+                .flatten()
+        }
+        _ => None,
+    }
+}
+
+fn crc_system(system: SystemId) -> bool {
+    matches!(
+        system,
+        SystemId::Nes
+            | SystemId::Snes
+            | SystemId::N64
+            | SystemId::Gb
+            | SystemId::Gbc
+            | SystemId::Gba
+            | SystemId::MasterSystem
+            | SystemId::MegaDrive
+    )
+}
+
+fn crc32(path: &Path) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let mut crc = 0xffff_ffffu32;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer).ok()?;
+        if count == 0 {
+            break;
+        }
+        for byte in &buffer[..count] {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = 0u32.wrapping_sub(crc & 1);
+                crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+            }
+        }
+    }
+    Some(format!("{:08X}", !crc))
+}
+
+/// Fast, local identification used before any online catalogue lookup.
+pub fn identify(system: SystemId, path: &Path) -> GameIdentity {
+    let size = path.metadata().ok().map(|metadata| metadata.len());
+    let serial = header_serial(system, path);
+    let crc32 = (serial.is_none()
+        && crc_system(system)
+        && size.is_some_and(|bytes| bytes <= MAX_CRC_BYTES))
+    .then(|| crc32(path))
+    .flatten();
+    GameIdentity {
+        serial,
+        crc32,
+        file_size: size,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedIdentity {
+    size: u64,
+    modified: u64,
+    identity: GameIdentity,
+}
+
+/// Avoids hashing an unchanged collection at every start. The cache contains
+/// no ROM data, only a path, size, timestamp and the derived identifiers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IdentityCache {
+    records: BTreeMap<String, CachedIdentity>,
+}
+
+impl IdentityCache {
+    pub fn load(path: &Path) -> IdentityCache {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_string_pretty(self).unwrap_or_default())
+    }
+
+    pub fn identify(&mut self, system: SystemId, path: &Path) -> GameIdentity {
+        let Ok(stat) = path.metadata() else {
+            return GameIdentity::default();
+        };
+        let size = stat.len();
+        let modified = stat
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |duration| duration.as_secs());
+        let mut key = path.to_string_lossy().replace('\\', "/");
+        if cfg!(windows) {
+            key.make_ascii_lowercase();
+        }
+        if let Some(hit) = self.records.get(&key) {
+            if hit.size == size && hit.modified == modified {
+                return hit.identity.clone();
+            }
+        }
+        let identity = identify(system, path);
+        self.records.insert(
+            key,
+            CachedIdentity {
+                size,
+                modified,
+                identity: identity.clone(),
+            },
+        );
+        identity
+    }
+}
+
+/// On-disk catalogue cache. Network providers populate this structure; scans
+/// only read it, so an unavailable service never slows or breaks the library.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MetadataCache {
+    pub records: BTreeMap<String, GameMetadata>,
+}
+
+impl MetadataCache {
+    pub fn key(game: &Game) -> String {
+        game.identity
+            .lookup_key(game.system)
+            .unwrap_or_else(|| format!("{}:local:{}", game.system, game.id))
+    }
+
+    pub fn load(path: &Path) -> MetadataCache {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_string_pretty(self).unwrap_or_default())
+    }
+
+    pub fn apply(&self, games: &mut [Game]) {
+        for game in games {
+            game.metadata = self.records.get(&Self::key(game)).cloned();
+            if let Some(metadata) = &game.metadata {
+                if !metadata.canonical_title.is_empty() {
+                    game.title.clone_from(&metadata.canonical_title);
+                }
+            }
+        }
+    }
+}
+
+/// Builds a library entry for a file explicitly assigned to a console.
+/// Returns `None` when the path is not a file supported by that console.
+pub fn imported_game(system: SystemId, path: &Path) -> Option<Game> {
+    imported_game_cached(system, path, &mut IdentityCache::default())
+}
+
+pub fn imported_game_cached(
+    system: SystemId,
+    path: &Path,
+    identities: &mut IdentityCache,
+) -> Option<Game> {
+    if !path.is_file() {
+        return None;
+    }
+    let ext = ext_of(path)?;
+    if !system.info().extensions.contains(&ext.as_str()) {
+        return None;
+    }
+    let stem = path.file_stem()?.to_string_lossy();
+    Some(Game {
+        id: game_id(system, path),
+        system,
+        title: clean_title(&stem),
+        path: path.to_path_buf(),
+        cover: find_cover(path, None),
+        favorite: false,
+        identity: identities.identify(system, path),
+        metadata: None,
+    })
+}
+
 /// Scans the given folders. Media folders (`media`, `images`) are skipped.
 pub fn scan(rom_dirs: &[PathBuf]) -> Vec<Game> {
+    scan_cached(rom_dirs, &mut IdentityCache::default())
+}
+
+pub fn scan_cached(rom_dirs: &[PathBuf], identities: &mut IdentityCache) -> Vec<Game> {
     let mut games = Vec::new();
     for root in rom_dirs {
         // Folders that hold an .m3u playlist: their disc files are not listed
@@ -188,6 +420,8 @@ pub fn scan(rom_dirs: &[PathBuf]) -> Vec<Game> {
                 path: path.to_path_buf(),
                 cover: find_cover(path, system_root.as_deref()),
                 favorite: false,
+                identity: identities.identify(system, path),
+                metadata: None,
             });
         }
     }
@@ -301,6 +535,20 @@ mod tests {
     }
 
     #[test]
+    fn imports_an_ambiguous_file_when_the_system_is_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("Super Game (USA).rvz");
+        touch(&game);
+        touch(&dir.path().join("Super Game (USA).png"));
+
+        let imported = imported_game(SystemId::GameCube, &game).unwrap();
+        assert_eq!(imported.title, "Super Game");
+        assert_eq!(imported.system, SystemId::GameCube);
+        assert!(imported.cover.is_some());
+        assert!(imported_game(SystemId::Ps2, &game).is_none());
+    }
+
+    #[test]
     fn whole_retrobat_folder_finds_only_games() {
         let dir = tempfile::tempdir().unwrap();
         let r = dir.path();
@@ -323,5 +571,82 @@ mod tests {
         assert!(f.toggle(&a));
         f.save(&file).unwrap();
         assert!(Favorites::load(&file).ids.contains(&a));
+    }
+
+    #[test]
+    fn identifies_cartridges_and_raw_gamecube_discs() {
+        let dir = tempfile::tempdir().unwrap();
+        let cartridge = dir.path().join("known.gba");
+        fs::write(&cartridge, b"123456789").unwrap();
+        let cart_id = identify(SystemId::Gba, &cartridge);
+        assert_eq!(cart_id.crc32.as_deref(), Some("CBF43926"));
+        assert_eq!(cart_id.file_size, Some(9));
+
+        let disc = dir.path().join("game.iso");
+        fs::write(&disc, b"GMSE01rest of image").unwrap();
+        let disc_id = identify(SystemId::GameCube, &disc);
+        assert_eq!(disc_id.serial.as_deref(), Some("GMSE01"));
+        assert_eq!(
+            disc_id.lookup_key(SystemId::GameCube).as_deref(),
+            Some("gamecube:serial:GMSE01")
+        );
+
+        let wiiu = dir.path().join("game.wud");
+        fs::write(&wiiu, b"WUP-P-ARDE-00-551USA-0rest").unwrap();
+        let wiiu_id = identify(SystemId::WiiU, &wiiu);
+        assert_eq!(wiiu_id.serial.as_deref(), Some("ARDE"));
+        assert_eq!(
+            wiiu_id.lookup_key(SystemId::WiiU).as_deref(),
+            Some("wiiu:serial:ARDE")
+        );
+
+        let invalid_wiiu = dir.path().join("invalid.wud");
+        fs::write(&invalid_wiiu, b"not-a-wiiu-disc").unwrap();
+        assert!(identify(SystemId::WiiU, &invalid_wiiu).serial.is_none());
+    }
+
+    #[test]
+    fn metadata_cache_matches_exact_identity_and_survives_offline() {
+        let identity = GameIdentity {
+            serial: Some("GMSE01".into()),
+            file_size: Some(10),
+            ..Default::default()
+        };
+        let mut game = Game {
+            id: "local".into(),
+            system: SystemId::GameCube,
+            title: "filename".into(),
+            path: "game.iso".into(),
+            cover: None,
+            favorite: false,
+            identity,
+            metadata: None,
+        };
+        let mut cache = MetadataCache::default();
+        cache.records.insert(
+            "gamecube:serial:GMSE01".into(),
+            GameMetadata {
+                canonical_title: "Super Mario Sunshine".into(),
+                source: "test".into(),
+                source_id: "GMSE01".into(),
+                confidence: 100,
+                ..Default::default()
+            },
+        );
+        cache.apply(std::slice::from_mut(&mut game));
+        assert_eq!(game.title, "Super Mario Sunshine");
+        assert_eq!(game.metadata.unwrap().confidence, 100);
+    }
+
+    #[test]
+    fn identity_cache_reuses_unchanged_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("game.gba");
+        fs::write(&game, b"123456789").unwrap();
+        let mut cache = IdentityCache::default();
+        let first = cache.identify(SystemId::Gba, &game);
+        let second = cache.identify(SystemId::Gba, &game);
+        assert_eq!(first, second);
+        assert_eq!(cache.records.len(), 1);
     }
 }

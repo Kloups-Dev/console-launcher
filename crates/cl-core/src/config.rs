@@ -74,6 +74,14 @@ pub struct CustomEmulator {
     pub systems: Vec<SystemId>,
 }
 
+/// A game file added directly by the user. This complements organised ROM
+/// folders for people who keep games in arbitrary locations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedGame {
+    pub path: PathBuf,
+    pub system: SystemId,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerfConfig {
@@ -82,8 +90,6 @@ pub struct PerfConfig {
     /// System-level optimisations applied to every emulator: higher process
     /// priority, and on Windows the high-performance GPU preference.
     pub system_tweaks: bool,
-    /// Run a real-condition measurement the first time a game is played.
-    pub measure_first_launch: bool,
     /// Measurement length in seconds.
     pub capture_seconds: u32,
     /// Seconds to wait after launch before measuring (loading screens).
@@ -97,7 +103,6 @@ impl Default for PerfConfig {
         PerfConfig {
             auto_tune: true,
             system_tweaks: true,
-            measure_first_launch: true,
             capture_seconds: 60,
             capture_delay_seconds: 20,
             presentmon_path: None,
@@ -111,6 +116,9 @@ pub struct AppConfig {
     /// Folders containing games, organised one sub-folder per system
     /// (`ps2`, `snes`, …). Files directly in the folder are matched by extension.
     pub rom_dirs: Vec<PathBuf>,
+    /// Individual game files, with the console chosen by the user when the
+    /// file extension is shared by several systems (`.iso`, `.rvz`, ...).
+    pub imported_games: Vec<ImportedGame>,
     /// Folders searched for emulator executables (for example the
     /// `emulators` folder of RetroBat), in addition to the usual places.
     pub emulator_dirs: Vec<PathBuf>,
@@ -132,6 +140,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             rom_dirs: Vec::new(),
+            imported_games: Vec::new(),
             emulator_dirs: Vec::new(),
             bios_dir: None,
             theme: "horizon".into(),
@@ -202,6 +211,10 @@ mod tests {
         let path = dir.path().join("config.toml");
         let mut cfg = AppConfig::default();
         cfg.rom_dirs.push("/games".into());
+        cfg.imported_games.push(ImportedGame {
+            path: "/elsewhere/Game.rvz".into(),
+            system: SystemId::GameCube,
+        });
         cfg.system_emulator
             .insert(SystemId::Psx, "retroarch".into());
         cfg.emulators.insert(

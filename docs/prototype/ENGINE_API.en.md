@@ -16,7 +16,7 @@ cl_engine_close(e);
 - Error messages follow the language chosen in the settings (`fr` or `en`).
 - An internal error never crashes the caller: it comes back as `{"ok": false}`.
 
-In QML themes, the same methods are reached with `Launcher.request(method, params, callback)`.
+The built-in QML interface uses a private `Launcher.internalRequest(...)` bridge. It is not part of the future theme contract and no external QML is executed.
 
 ## Methods
 
@@ -25,7 +25,10 @@ In QML themes, the same methods are reached with `Launcher.request(method, param
 | `version` | — | Engine version |
 | `config` | — | Contents of `config.toml` (fast: no disk scan) |
 | `library` | — | `{systems, games}` |
+| `add_game` | `system`, `path` | Adds an individual game file after checking its extension |
+| `remove_game` | `path` | Removes an individually added game without deleting the file |
 | `game_info` | `id` | What a launch would do: emulator, quality rung, notes. Writes nothing. When the game cannot start: `{ready: false, code, emulatorId, error}` |
+| `refresh_game_metadata` | `id` | Explicitly looks up the Title Screen record and the GameTDB cover for GameCube/Wii, Nintendo DS and Wii U. It caches the record and validated PNG/JPEG, then returns metadata or `null`. Normal library scans never use the network. |
 | `play` | `id` | Starts the game, waits for the emulator to close, measures and adjusts. Report: smoothness, next rung, notes |
 | `toggle_favorite` | `id` | New state (`true` / `false`) |
 | `set_quality` | `id`, `step` | Fixes a rung by hand; the automatic search stops for that game |
@@ -37,6 +40,7 @@ In QML themes, the same methods are reached with `Launcher.request(method, param
 | `remove_custom_emulator` | `id` | — |
 | `reset_emulator_tuning` | `id` | Gives the settings changed by hand back to the automatic optimisation |
 | `open_emulator` | `id` | Opens the emulator without a game |
+| `install_emulator` | `id` | Downloads, verifies and activates an available managed version (Dolphin 2609a on Windows) |
 | `add_path` | `path` | `{kind: "games" \| "emulators" \| "emulator" \| "already_added"}` |
 | `remove_path` | `path` | — |
 | `update_preferences` | any of `autoTune`, `systemTweaks`, `presentmonPath` (`""` clears it), `language`, `theme` | — |

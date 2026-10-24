@@ -77,6 +77,52 @@ impl EmulatorAdapter for Dolphin {
             vec![GraphicsApi::Vulkan, GraphicsApi::OpenGl]
         }
     }
+
+    fn apis_for_gpu(&self, vendor_id: u32) -> Vec<GraphicsApi> {
+        if cfg!(windows) {
+            match vendor_id {
+                // Dolphin documents D3D12 as slightly faster than D3D11 on
+                // some integrated GPUs, particularly Intel models.
+                0x8086 => vec![
+                    GraphicsApi::D3d12,
+                    GraphicsApi::D3d11,
+                    GraphicsApi::Vulkan,
+                    GraphicsApi::OpenGl,
+                ],
+                // Hybrid ubershaders and Vulkan can still stutter on NVIDIA
+                // because of driver pipeline swaps. D3D11 is the conservative
+                // Windows default; the tuner may still preserve a user choice.
+                0x10DE => vec![
+                    GraphicsApi::D3d11,
+                    GraphicsApi::D3d12,
+                    GraphicsApi::Vulkan,
+                    GraphicsApi::OpenGl,
+                ],
+                // Dolphin generally recommends Vulkan for AMD.
+                0x1002 | 0x1022 => self.apis(),
+                // D3D11 is Dolphin's broadly compatible middle ground.
+                _ => vec![
+                    GraphicsApi::D3d11,
+                    GraphicsApi::D3d12,
+                    GraphicsApi::Vulkan,
+                    GraphicsApi::OpenGl,
+                ],
+            }
+        } else {
+            match vendor_id {
+                // Vulkan is not Dolphin's recommended Intel backend. NVIDIA
+                // also has a documented Hybrid/Vulkan pipeline-swap caveat.
+                0x8086 | 0x10DE => vec![GraphicsApi::OpenGl, GraphicsApi::Vulkan],
+                _ => self.apis(),
+            }
+        }
+    }
+
+    fn tuning_revision(&self) -> u32 {
+        // Revision 1 removes Skip Drawing and forced Dual Core, and chooses
+        // the initial graphics API with Dolphin's vendor guidance.
+        1
+    }
     fn exe_names(&self) -> Vec<String> {
         let names: &[&str] = if cfg!(windows) {
             &["Dolphin.exe"]
@@ -97,16 +143,15 @@ impl EmulatorAdapter for Dolphin {
     }
 
     /// Internal resolution multiplier: 1 = native (~480p), 2 ≈ 720p,
-    /// 3 ≈ 1080p, 4 ≈ 1440p, 6 ≈ 4K. Hybrid ubershaders avoid shader
-    /// compilation stutter at a GPU cost, so the lightest step keeps
-    /// asynchronous compilation instead.
+    /// 3 ≈ 1080p, 4 ≈ 1440p, 6 ≈ 4K. Specialized shaders are the safe
+    /// low-end default. Higher rungs use Hybrid Ubershaders to reduce shader
+    /// compilation stutter without deliberately skipping objects.
     /// Value mapping to check against the Dolphin version in use:
     /// ShaderCompilationMode 0 = specialized, 1 = exclusive ubershaders,
     /// 2 = hybrid ubershaders, 3 = skip drawing.
     fn quality_ladder(&self, _system: SystemId) -> Vec<QualityStep> {
-        let common = [("Dolphin.Core.CPUThread", "True")];
         let mk = |label: &str, ir: &str, shader: &str| {
-            let mut s = step(label, &common);
+            let mut s = step(label, &[]);
             s.settings
                 .insert("GFX.Settings.InternalResolution".into(), ir.into());
             s.settings
@@ -114,7 +159,7 @@ impl EmulatorAdapter for Dolphin {
             s
         };
         vec![
-            mk("Native", "1", "3"),
+            mk("Native", "1", "0"),
             mk("720p", "2", "2"),
             mk("1080p", "3", "2"),
             mk("1440p", "4", "2"),
@@ -247,5 +292,34 @@ mod tests {
         assert_eq!(v["GFX.Settings.InternalResolution"], "4");
         assert_eq!(v[BACKEND_KEY], "D3D12");
         assert!(!v.contains_key("Dolphin.Core.CPUThread"));
+    }
+
+    #[test]
+    fn automatic_ladder_never_skips_drawing_or_forces_dual_core() {
+        let ladder = Dolphin.quality_ladder(SystemId::GameCube);
+        assert_eq!(
+            ladder[0].settings["GFX.Settings.ShaderCompilationMode"],
+            "0"
+        );
+        for step in ladder {
+            assert_ne!(step.settings["GFX.Settings.ShaderCompilationMode"], "3");
+            assert!(!step.settings.contains_key("Dolphin.Core.CPUThread"));
+        }
+    }
+
+    #[test]
+    fn graphics_api_order_accounts_for_vendor() {
+        let intel = Dolphin.apis_for_gpu(0x8086);
+        let nvidia = Dolphin.apis_for_gpu(0x10DE);
+        let amd = Dolphin.apis_for_gpu(0x1002);
+        if cfg!(windows) {
+            assert_eq!(intel[0], GraphicsApi::D3d12);
+            assert_eq!(nvidia[0], GraphicsApi::D3d11);
+            assert_eq!(amd[0], GraphicsApi::Vulkan);
+        } else {
+            assert_eq!(intel[0], GraphicsApi::OpenGl);
+            assert_eq!(nvidia[0], GraphicsApi::OpenGl);
+            assert_eq!(amd[0], GraphicsApi::Vulkan);
+        }
     }
 }

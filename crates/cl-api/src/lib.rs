@@ -156,6 +156,14 @@ fn dispatch(
             })
         }
 
+        "refresh_game_metadata" => {
+            let id: String = arg(p, "id")?;
+            engine
+                .refresh_game_metadata(&id)
+                .map_err(loc)
+                .and_then(to_value)
+        }
+
         "toggle_favorite" => {
             let on = engine
                 .toggle_favorite(&arg::<String>(p, "id")?)
@@ -251,9 +259,31 @@ fn dispatch(
             .map_err(loc)
             .map(|_| Value::Null),
 
+        "install_emulator" => engine
+            .install_emulator(&arg::<String>(p, "id")?)
+            .map_err(loc)
+            .and_then(to_value),
+
         "add_path" => {
             let path: String = arg(p, "path")?;
             engine.add_path(path.into()).map_err(loc).and_then(to_value)
+        }
+
+        "add_game" => {
+            let path: String = arg(p, "path")?;
+            let system: SystemId = arg(p, "system")?;
+            engine
+                .add_game(path.into(), system)
+                .map_err(loc)
+                .map(|_| Value::Null)
+        }
+
+        "remove_game" => {
+            let path: String = arg(p, "path")?;
+            engine
+                .remove_game(std::path::Path::new(&path))
+                .map_err(loc)
+                .map(|_| Value::Null)
         }
 
         "remove_path" => {
@@ -288,7 +318,13 @@ fn dispatch(
 
         "hardware" => {
             let refresh: Option<bool> = arg(p, "refresh")?;
-            to_value(engine.hardware(refresh.unwrap_or(false)).clone())
+            let report = engine.hardware(refresh.unwrap_or(false)).clone();
+            let main_gpu = report.main_gpu().cloned();
+            let mut value = serde_json::to_value(report).map_err(|e| e.to_string())?;
+            if let Value::Object(fields) = &mut value {
+                fields.insert("main_gpu".into(), json!(main_gpu));
+            }
+            Ok(value)
         }
 
         "reload" => {
@@ -335,7 +371,19 @@ mod tests {
 
         let s = api.call("settings_overview", &none).unwrap();
         assert_eq!(s["config"]["perf"]["system_tweaks"], false);
+        assert_eq!(s["systems"].as_array().unwrap().len(), SystemId::ALL.len());
         assert!(s["emulators"].as_array().unwrap().len() >= 8);
+        let retroarch = s["emulators"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|emulator| emulator["id"] == "retroarch")
+            .unwrap();
+        assert_eq!(retroarch["automatic_install"], false);
+        assert!(retroarch["download_page"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://"));
         assert!(api
             .call("toggle_favorite", &json!({ "id": id }))
             .unwrap()

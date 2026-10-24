@@ -101,6 +101,17 @@ pub trait EmulatorAdapter: Send + Sync {
     fn systems(&self) -> &[SystemId];
     /// Graphics back-ends, best first for the current OS.
     fn apis(&self) -> Vec<GraphicsApi>;
+    /// Graphics back-ends reordered for the detected GPU vendor. Adapters
+    /// only override this when their emulator has documented vendor-specific
+    /// trade-offs; unknown vendors keep the normal order.
+    fn apis_for_gpu(&self, _vendor_id: u32) -> Vec<GraphicsApi> {
+        self.apis()
+    }
+    /// Increment when automatic settings change enough that measurements
+    /// made with an older policy must not be reused.
+    fn tuning_revision(&self) -> u32 {
+        0
+    }
     /// Executable names to look for on this OS.
     fn exe_names(&self) -> Vec<String>;
     /// Usual install locations to probe when no path is configured.
@@ -417,6 +428,8 @@ pub(crate) mod testutil {
             path: path.into(),
             cover: None,
             favorite: false,
+            identity: Default::default(),
+            metadata: None,
         }
     }
 }

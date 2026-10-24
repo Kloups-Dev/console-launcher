@@ -26,6 +26,11 @@ enum Cmd {
     Probe,
     /// Add a game folder to the settings.
     AddRoms { dir: std::path::PathBuf },
+    /// Add one game file and specify its console (for example: gamecube).
+    AddGame {
+        system: String,
+        file: std::path::PathBuf,
+    },
     /// List systems and games found.
     Scan,
     /// Show what would be launched for a game (title search).
@@ -56,6 +61,8 @@ enum Cmd {
     Favorite { query: String },
     /// Launch summary for interfaces: emulator, quality, notes (JSON).
     Info { query: String },
+    /// Fetch and cache a game's public metadata record.
+    Metadata { query: String },
 }
 
 fn find_game(engine: &Engine, query: &str) -> Result<Game> {
@@ -155,6 +162,15 @@ fn run() -> Result<()> {
                 engine.save_config()?;
             }
             println!("Game folders: {:?}", engine.config.rom_dirs);
+        }
+        Cmd::AddGame { system, file } => {
+            let system = cl_core::SystemId::from_str_loose(&system)
+                .ok_or_else(|| anyhow!("unknown system '{system}'"))?;
+            let file = file
+                .canonicalize()
+                .with_context(|| format!("{}", file.display()))?;
+            engine.add_game(file.clone(), system)?;
+            println!("Game added: {} [{}]", file.display(), system);
         }
         Cmd::Scan => {
             let games = engine.games();
@@ -346,7 +362,11 @@ fn run() -> Result<()> {
                 let _ = std::fs::remove_file(file);
                 println!("Installed and active: {version}. Previous version kept for rollback.");
                 if cfg.mode != cl_core::config::EmulatorMode::Managed {
-                    println!("Set [emulators.{id}] mode = \"managed\" in config.toml to use it.");
+                    let emulator = engine.config.emulators.entry(id.clone()).or_default();
+                    emulator.mode = cl_core::config::EmulatorMode::Managed;
+                    emulator.path = None;
+                    engine.save_config()?;
+                    println!("The managed version is now selected automatically.");
                 }
             }
         }
@@ -378,6 +398,20 @@ fn run() -> Result<()> {
                 Err(e) => serde_json::json!({ "ready": false, "error": e.to_string() }),
             };
             println!("{info}");
+        }
+        Cmd::Metadata { query } => {
+            let game = find_game(&engine, &query)?;
+            let metadata = engine.refresh_game_metadata(&game.id)?;
+            print(json, &metadata, || match &metadata {
+                Some(metadata) => println!(
+                    "{} — {} ({}, confidence {}%)",
+                    metadata.canonical_title,
+                    metadata.publisher.as_deref().unwrap_or("unknown publisher"),
+                    metadata.release_date.as_deref().unwrap_or("unknown date"),
+                    metadata.confidence
+                ),
+                None => println!("No matching metadata record found."),
+            });
         }
         Cmd::Rollback { id } => {
             let m = ManagedEmulator::new(&engine.paths.emulators_dir(), &id);

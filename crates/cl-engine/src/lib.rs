@@ -11,7 +11,7 @@
 
 use cl_adapters::profile::{self, Profile, ProfileAdapter};
 use cl_adapters::{EmulatorAdapter, ExeIndex, LaunchContext, LaunchPlan, SystemTweaks};
-use cl_core::config::{AppConfig, CustomEmulator, EmulatorConfig, EmulatorMode};
+use cl_core::config::{AppConfig, CustomEmulator, EmulatorConfig, EmulatorMode, ImportedGame};
 use cl_core::paths::Paths;
 use cl_core::watch::SettingsWatch;
 use cl_core::{Game, SystemId, SystemInfo};
@@ -21,7 +21,7 @@ use cl_perf::frametime::{analyse, parse_file, verdict, FrameStats, Verdict};
 use cl_perf::store::{GameTuning, ProfileStore, RunRecord};
 use cl_perf::tuner::TuneState;
 use cl_session::{CaptureRequest, SessionResult};
-use cl_updater::ManagedEmulator;
+use cl_updater::{sources, ManagedEmulator, Source};
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -40,10 +40,18 @@ pub enum EngineError {
     NoEmulator(String),
     #[error("{0} is not a file")]
     NotAFile(PathBuf),
+    #[error("{path} is not a supported {system} game")]
+    UnsupportedGameFile { path: PathBuf, system: SystemId },
     #[error(transparent)]
     Adapter(#[from] cl_adapters::AdapterError),
     #[error(transparent)]
     Session(#[from] cl_session::SessionError),
+    #[error(transparent)]
+    Update(#[from] cl_updater::UpdateError),
+    #[error("automatic installation is not available for {0}")]
+    InstallUnavailable(String),
+    #[error("metadata: {0}")]
+    Metadata(String),
     #[error("file error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -63,6 +71,14 @@ impl EngineError {
             ),
             EngineError::UnknownEmulator(id) => format!("Émulateur inconnu : {id}"),
             EngineError::NotAFile(p) => format!("{} n'est pas un fichier", p.display()),
+            EngineError::UnsupportedGameFile { path, system } => format!(
+                "{} n'est pas un fichier de jeu compatible avec {}",
+                path.display(),
+                system.info().name
+            ),
+            EngineError::InstallUnavailable(name) => {
+                format!("L'installation automatique n'est pas disponible pour {name}")
+            }
             other => other.to_string(),
         }
     }
@@ -137,6 +153,21 @@ pub struct EmulatorStatus {
     pub tunes_settings: bool,
     /// Settings the user changed in the emulator (left alone) or locked.
     pub user_settings: Vec<String>,
+    /// Active launcher-managed version, when present.
+    pub managed_version: Option<String>,
+    /// Curated version offered without a network lookup (Dolphin on Windows).
+    pub install_version: Option<String>,
+    pub automatic_install: bool,
+    /// Official download page when installation must be completed manually.
+    pub download_page: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallReport {
+    pub emulator: String,
+    pub version: String,
+    pub executable: PathBuf,
+    pub already_installed: bool,
 }
 
 /// Emulator choice for one system, as shown in the settings.
@@ -273,6 +304,15 @@ impl Engine {
     /// layout), and on Windows `X:\RetroBat\emulators` on every drive.
     pub fn emulator_search_dirs(&self) -> Vec<PathBuf> {
         let mut dirs = self.config.emulator_dirs.clone();
+        // Reuse emulators installed by the first Windows prototype. This is
+        // also a sensible conventional location for portable installations.
+        if cfg!(windows) {
+            if let Some(dir) =
+                cl_core::paths::expand("{localappdata}/ConsoleLauncher/emulators", None)
+            {
+                dirs.push(dir);
+            }
+        }
         for r in &self.config.rom_dirs {
             if r.file_name()
                 .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("roms"))
@@ -394,6 +434,36 @@ impl Engine {
     pub fn remove_path(&mut self, p: &Path) -> Result<(), EngineError> {
         self.config.rom_dirs.retain(|d| d != p);
         self.config.emulator_dirs.retain(|d| d != p);
+        self.save_config()
+    }
+
+    /// Adds one game file without imposing a RetroBat-style folder layout.
+    /// The console is explicit because common formats such as ISO and RVZ are
+    /// shared by several systems.
+    pub fn add_game(&mut self, path: PathBuf, system: SystemId) -> Result<(), EngineError> {
+        if !path.is_file() {
+            return Err(EngineError::NotAFile(path));
+        }
+        if cl_library::imported_game(system, &path).is_none() {
+            return Err(EngineError::UnsupportedGameFile { path, system });
+        }
+        if let Some(existing) = self
+            .config
+            .imported_games
+            .iter_mut()
+            .find(|g| g.path == path)
+        {
+            existing.system = system;
+        } else {
+            self.config
+                .imported_games
+                .push(ImportedGame { path, system });
+        }
+        self.save_config()
+    }
+
+    pub fn remove_game(&mut self, path: &Path) -> Result<(), EngineError> {
+        self.config.imported_games.retain(|g| g.path != path);
         self.save_config()
     }
 
@@ -564,9 +634,77 @@ impl Engine {
     }
 
     pub fn games(&self) -> Vec<Game> {
-        let mut games = cl_library::scan(&self.config.rom_dirs);
+        let identity_file = self.paths.identity_cache_file();
+        let mut identities = cl_library::IdentityCache::load(&identity_file);
+        let mut games = cl_library::scan_cached(&self.config.rom_dirs, &mut identities);
+        for imported in &self.config.imported_games {
+            if games.iter().any(|g| g.path == imported.path) {
+                continue;
+            }
+            if let Some(game) =
+                cl_library::imported_game_cached(imported.system, &imported.path, &mut identities)
+            {
+                games.push(game);
+            }
+        }
+        if let Err(error) = identities.save(&identity_file) {
+            log::warn!("cannot save game identity cache: {error}");
+        }
+        // Enrichment is cache-first and optional: launching remains fully
+        // functional offline and provider outages never affect a scan.
+        cl_library::MetadataCache::load(&self.paths.metadata_cache_file()).apply(&mut games);
+        games.sort_by(|a, b| {
+            (a.system, a.title.to_lowercase()).cmp(&(b.system, b.title.to_lowercase()))
+        });
         cl_library::Favorites::load(&self.paths.root.join("favorites.json")).apply(&mut games);
         games
+    }
+
+    /// Explicit network enrichment for one game. Scanning and launching stay
+    /// cache-only and therefore continue to work offline.
+    pub fn refresh_game_metadata(
+        &self,
+        id: &str,
+    ) -> Result<Option<cl_core::GameMetadata>, EngineError> {
+        let game = self
+            .games()
+            .into_iter()
+            .find(|game| game.id == id)
+            .ok_or_else(|| EngineError::Metadata(format!("unknown game {id}")))?;
+        let Some(mut metadata) =
+            cl_library::provider::lookup_title_screen(&game).map_err(EngineError::Metadata)?
+        else {
+            return Ok(None);
+        };
+        if let Some(url) = metadata.cover_url.as_deref() {
+            let file_name = game
+                .identity
+                .serial
+                .as_deref()
+                .unwrap_or(&game.id)
+                .chars()
+                .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+                .collect::<String>();
+            let destination = self
+                .paths
+                .artwork_cache_dir()
+                .join(game.system.as_str())
+                .join(format!(
+                    "{file_name}.{}",
+                    cl_library::provider::artwork_extension(url).unwrap_or("png")
+                ));
+            match cl_library::provider::cache_cover(url, &destination) {
+                Ok(path) => metadata.cover_path = Some(path),
+                Err(error) => log::warn!("cannot cache artwork for {}: {error}", game.id),
+            }
+        }
+        let file = self.paths.metadata_cache_file();
+        let mut cache = cl_library::MetadataCache::load(&file);
+        cache
+            .records
+            .insert(cl_library::MetadataCache::key(&game), metadata.clone());
+        cache.save(&file)?;
+        Ok(Some(metadata))
     }
 
     pub fn toggle_favorite(&self, game_id: &str) -> std::io::Result<bool> {
@@ -669,6 +807,19 @@ impl Engine {
                 let id = a.id().to_owned();
                 let (cfg, exe) = self.locate(a.as_ref());
                 let custom = self.config.custom_emulators.contains_key(&id);
+                let managed = self.managed(&id).state();
+                let source = sources::source_for(&id);
+                let install_version = match &source {
+                    Some(Source::Pinned { version, .. }) => Some((*version).to_owned()),
+                    _ => None,
+                };
+                let automatic_install = source
+                    .as_ref()
+                    .is_some_and(|s| !matches!(s, Source::Manual { .. }));
+                let download_page = match &source {
+                    Some(Source::Manual { page }) => Some((*page).to_owned()),
+                    _ => None,
+                };
                 let mut user_settings: BTreeSet<String> =
                     SettingsWatch::load(&self.watch_file(&id)).user_changed;
                 user_settings.extend(cfg.locked_keys.iter().cloned());
@@ -689,6 +840,10 @@ impl Engine {
                     path: exe,
                     tunes_settings: a.tunes_settings(),
                     user_settings: user_settings.into_iter().collect(),
+                    managed_version: managed.active,
+                    install_version,
+                    automatic_install,
+                    download_page,
                     id,
                 }
             })
@@ -758,6 +913,55 @@ impl Engine {
         Ok(())
     }
 
+    /// Downloads, verifies and activates an emulator from its official source.
+    /// Curated releases include a fixed archive hash; existing verified files
+    /// are reused without downloading again.
+    pub fn install_emulator(&mut self, id: &str) -> Result<InstallReport, EngineError> {
+        let adapter = self
+            .adapter(id)
+            .ok_or_else(|| EngineError::UnknownEmulator(id.into()))?;
+        let source = sources::source_for(id)
+            .ok_or_else(|| EngineError::InstallUnavailable(adapter.name().into()))?;
+        if matches!(source, Source::Manual { .. }) {
+            return Err(EngineError::InstallUnavailable(adapter.name().into()));
+        }
+        let release = sources::latest(&source)?
+            .ok_or_else(|| EngineError::InstallUnavailable(adapter.name().into()))?;
+        let managed = self.managed(id);
+        let names = adapter.exe_names();
+        let existing = managed
+            .active_dir()
+            .and_then(|dir| cl_adapters::find_in_tree(&dir, &names));
+        let already_installed =
+            managed.state().active.as_deref() == Some(&release.version) && existing.is_some();
+        let executable = if let Some(exe) = existing.filter(|_| already_installed) {
+            exe
+        } else {
+            let archive = sources::download(&release, &managed.root.join("downloads"))?;
+            let exe_name = names.first().cloned().unwrap_or_default();
+            let install = managed.install_archive(&release.version, &archive, &exe_name);
+            let _ = std::fs::remove_file(&archive);
+            install?;
+            cl_adapters::find_in_tree(
+                &managed
+                    .active_dir()
+                    .ok_or_else(|| EngineError::InstallUnavailable(adapter.name().into()))?,
+                &names,
+            )
+            .ok_or_else(|| EngineError::InstallUnavailable(adapter.name().into()))?
+        };
+        let cfg = self.config.emulators.entry(id.to_owned()).or_default();
+        cfg.mode = EmulatorMode::Managed;
+        cfg.path = None;
+        self.save_config()?;
+        Ok(InstallReport {
+            emulator: adapter.name().into(),
+            version: release.version,
+            executable,
+            already_installed,
+        })
+    }
+
     fn profiles(&self) -> ProfileStore {
         ProfileStore::new(self.paths.profiles_dir())
     }
@@ -766,7 +970,11 @@ impl Engine {
     /// change restarts the search from a fresh estimate.
     pub fn tuning(&mut self, game: &Game, adapter: &dyn EmulatorAdapter) -> GameTuning {
         let ladder_len = adapter.quality_ladder(game.system).len();
-        let fingerprint = self.hw_fingerprint();
+        let mut fingerprint = self.hw_fingerprint();
+        let tuning_revision = adapter.tuning_revision();
+        if tuning_revision > 0 {
+            fingerprint.push_str(&format!("|{}-policy-{tuning_revision}", adapter.id()));
+        }
         if let Some(t) = self.profiles().load(&game.id) {
             if t.hardware == fingerprint
                 && t.emulator == adapter.id()
@@ -780,13 +988,13 @@ impl Engine {
         } else {
             LadderKind::Latency
         };
-        let est = estimate(
-            &self.hw_summary(),
-            game.system,
-            kind,
-            ladder_len,
-            &adapter.apis(),
-        );
+        let gpu_vendor_id = self
+            .hardware(false)
+            .main_gpu()
+            .map(|gpu| gpu.vendor_id)
+            .unwrap_or(0);
+        let apis = adapter.apis_for_gpu(gpu_vendor_id);
+        let est = estimate(&self.hw_summary(), game.system, kind, ladder_len, &apis);
         GameTuning {
             game_id: game.id.clone(),
             system: game.system,
@@ -1107,16 +1315,74 @@ mod tests {
         let systems = engine.systems(&games);
         assert!(systems[0].emulator_found);
 
-        let (p, _) = engine.prepare(&games[0]).unwrap();
+        let (p, tuning) = engine.prepare(&games[0]).unwrap();
         assert_eq!(p.emulator, "dolphin");
         // 8 GB discrete GPU → rung 3 of the estimate table.
         assert_eq!(p.step_label, "1440p");
         assert!(!p.measure);
+        assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
+        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(p
+            .plan
+            .args
+            .contains(&"--config=GFX.Settings.ShaderCompilationMode=2".into()));
+        assert!(!p.plan.args.iter().any(|arg| arg.contains("CPUThread")));
 
         let t = engine.set_step(&games[0], 1).unwrap();
         assert!(t.state.done);
         let (p, _) = engine.prepare(&games[0]).unwrap();
         assert_eq!(p.step_label, "720p");
+    }
+
+    #[test]
+    fn dolphin_policy_change_discards_stale_automatic_tuning() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        let game = Game {
+            id: "old-dolphin-profile".into(),
+            system: SystemId::GameCube,
+            title: "Game".into(),
+            path: "Game.rvz".into(),
+            cover: None,
+            favorite: false,
+            identity: Default::default(),
+            metadata: None,
+        };
+        engine
+            .profiles()
+            .save(&GameTuning {
+                game_id: game.id.clone(),
+                system: game.system,
+                emulator: "dolphin".into(),
+                emulator_version: None,
+                hardware: "Test CPU|Test GPU".into(),
+                api: cl_core::GraphicsApi::D3d11,
+                state: TuneState::new(0, 5),
+                history: Vec::new(),
+            })
+            .unwrap();
+
+        let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
+        assert_eq!(tuning.state.current, 3);
+        assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
+        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+    }
+
+    #[test]
+    fn imports_a_single_game_and_rejects_the_wrong_console() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("Game.rvz");
+        touch(&game);
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+
+        engine.add_game(game.clone(), SystemId::GameCube).unwrap();
+        assert_eq!(engine.games().len(), 1);
+        assert_eq!(engine.games()[0].system, SystemId::GameCube);
+
+        assert!(matches!(
+            engine.add_game(game, SystemId::Ps2),
+            Err(EngineError::UnsupportedGameFile { .. })
+        ));
     }
 
     #[test]
@@ -1137,6 +1403,8 @@ mod tests {
             path: "x.iso".into(),
             cover: None,
             favorite: false,
+            identity: Default::default(),
+            metadata: None,
         };
         assert!(matches!(
             engine.prepare(&g),

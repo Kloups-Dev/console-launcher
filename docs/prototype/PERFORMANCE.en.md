@@ -10,7 +10,7 @@ Goal: every game runs at full speed, without stutter, at the best quality the ma
 2. **Real conditions, while playing.** Until the right setting is found, sessions are measured: MangoHud (Linux) or PresentMon (Windows) records the duration of every frame for 60 seconds, after 20 seconds of loading.
 3. **Adjustment.** If the session was smooth, the launcher tries the next rung up at the next session. If it stuttered, it goes back to the last smooth rung (or one rung down). It stops when a smooth rung sits right below a stuttering one. This takes at most as many sessions as the ladder has rungs (usually 5), and often 1 or 2.
 
-The result is specific to each game and saved in `profiles/<id>.json`. If the machine changes (another processor or graphics card), the search starts again.
+The result is specific to each game and saved in `profiles/<id>.json`. If the machine changes (another processor or graphics card), or an incompatible automatic policy is corrected, the search starts again.
 
 ## Quality ladders (v0.1)
 
@@ -21,7 +21,9 @@ The result is specific to each game and saved in `profiles/<id>.json`. If the ma
 | RetroArch (light consoles) | Eco · Standard · Low latency · Lowest latency | Run-ahead (1 to 2 frames): less latency, for more CPU work |
 | RetroArch (N64, DS, PSP) | Eco · Standard | Run-ahead off, too costly |
 
-The graphics API is chosen automatically: Vulkan when available, otherwise Direct3D on Windows or OpenGL.
+The graphics API is selected automatically for the emulator, operating system and GPU vendor. For Dolphin on Windows, Vulkan is preferred on AMD, D3D12 on Intel, and D3D11 on NVIDIA to avoid the documented Hybrid/Vulkan pipeline-swap stutter on that driver. An unknown vendor gets the conservative D3D11 choice. On Linux, the stability-first profile prefers OpenGL over Vulkan for Intel and NVIDIA; AMD keeps Vulkan.
+
+Dolphin's native rung uses specialized shaders, which suit modest GPUs. Higher rungs use Hybrid Ubershaders. Skip Drawing is excluded from automatic choices because it saves time by not drawing objects whose shader is not ready. The launcher also leaves Dual Core to Dolphin, preserving its per-game compatibility exceptions.
 
 ## Smoothness criteria
 
@@ -31,6 +33,8 @@ A session is judged **smooth** when:
 - fewer than 1 % of frames last more than 1.5 times the expected time.
 
 During a measurement, the emulator presents every console refresh (Dolphin gets an option so it does not skip duplicate frames). Otherwise a game designed for 30 frames/s and a game running at half speed would give the same measurement.
+
+On Windows, PresentMon targets only the process ID started by the launcher. It does not track keyboard or mouse input. If no CSV is produced, its short local log is included in the session report so the failure is explainable instead of silent.
 
 These thresholds are **starting values**. They will be confirmed or corrected after the first tests.
 
@@ -60,7 +64,7 @@ clctl analyse capture.csv --game "game name"
 
 ## To check on the real emulator versions
 
-- Dolphin: `ShaderCompilationMode` values and the name of the `SkipPresentingDuplicateFrames` key.
+- Dolphin: confirm the `SkipPresentingDuplicateFrames` measurement key against the exact bundled release.
 - PCSX2: `Renderer` numbers (14 = Vulkan, 3 = D3D11, 15 = D3D12, 12 = OpenGL) and launching with `-batch -nogui`.
 - PresentMon 2.x: command-line options used (`--process_name`, `--timed`, `--terminate_after_timed`, `--v1_metrics`).
 - MangoHud: `autostart_log` and `log_duration` options.

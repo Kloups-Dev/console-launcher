@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.21)
 project(ConsoleLauncher VERSION 0.3.1 LANGUAGES CXX)
 
-# Console Launcher — C++17 + Qt Quick interface. Themes are QML folders read
-# from disk, controllers go through SDL2, and the Rust engine (crate cl-ffi)
-# is a shared library loaded by the application.
+# Console Launcher — C++17 + Qt Quick interface. The functional QML shell is
+# compiled into the executable; controllers go through SDL2, and the Rust
+# engine (crate cl-ffi) is a shared library loaded by the application.
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -74,11 +74,12 @@ if(NOT CL_ENGINE_PREBUILT_DIR)
     add_dependencies(console-launcher-qt cl_engine_build)
 endif()
 
-# Built-in QML components shared by every theme (`import ConsoleLauncher`).
+# Trusted QML components compiled into the application.
 qt_add_qml_module(console-launcher-qt
     URI ConsoleLauncher
     VERSION 1.0
     QML_FILES
+        ui/DesktopApp.qml
         ui/SettingsPanel.qml
         ui/SettingsRow.qml
 )
@@ -101,10 +102,8 @@ target_link_libraries(console-launcher-qt PRIVATE
     cl_engine
 )
 
-# Themes are plain folders next to the executable, editable without
-# rebuilding; the engine library and clctl are copied next to it as well.
+# The engine library is copied next to the executable. User-provided QML is
+# deliberately not copied or executed; future themes will be data-only packs.
 add_custom_command(TARGET console-launcher-qt POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/themes $<TARGET_FILE_DIR:console-launcher-qt>/themes
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CL_ENGINE_LIB} $<TARGET_FILE_DIR:console-launcher-qt>)

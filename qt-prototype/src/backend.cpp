@@ -2,24 +2,21 @@
 
 #include <QCoreApplication>
 #include <QDir>
-#include <QFileInfo>
-#include <QGuiApplication>
 #include <QJSEngine>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
+#include <QSet>
 #include <QThreadPool>
 #include <QUrl>
 
 Backend::Backend(QObject *parent) : QObject(parent) {
-    // Settings are read once, synchronously, before the theme is loaded.
+    // Settings are read once, synchronously, before the interface is loaded.
     const Engine::Answer a = m_engine.call("config");
     if (a.ok)
         applyConfig(a.result.toMap());
     else
         setError(a.error);
-    if (!themes().contains(m_theme))
-        m_theme = QStringLiteral("horizon");
 }
 
 void Backend::applyConfig(const QVariantMap &config) {
@@ -28,28 +25,9 @@ void Backend::applyConfig(const QVariantMap &config) {
         m_language = lang;
         Q_EMIT languageChanged();
     }
-    const QString theme = config.value("theme").toString();
-    if (!theme.isEmpty())
-        m_theme = theme;
 }
 
 QString Backend::version() const { return QStringLiteral(CL_VERSION); }
-
-QString Backend::themesDir() const {
-    const QByteArray env = qgetenv("CONSOLE_LAUNCHER_QT_THEMES");
-    if (!env.isEmpty())
-        return QString::fromLocal8Bit(env);
-    return QCoreApplication::applicationDirPath() + "/themes";
-}
-
-QStringList Backend::themes() const {
-    QStringList out;
-    const auto dirs = QDir(themesDir()).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QString &d : dirs)
-        if (QFileInfo::exists(themesDir() + "/" + d + "/Main.qml"))
-            out << d;
-    return out;
-}
 
 QQuickWindow *Backend::window() const {
     if (!m_qml || m_qml->rootObjects().isEmpty())
@@ -57,28 +35,13 @@ QQuickWindow *Backend::window() const {
     return qobject_cast<QQuickWindow *>(m_qml->rootObjects().first());
 }
 
-void Backend::loadTheme() {
+void Backend::loadInterface() {
     if (!m_qml)
         return;
-    // Drop the previous theme's window before loading the new one.
-    const auto roots = m_qml->rootObjects();
-    for (QObject *o : roots)
-        o->deleteLater();
-    m_qml->clearComponentCache();
     m_settingsOpen = false;
-    const QString file = themesDir() + "/" + m_theme + "/Main.qml";
-    m_qml->load(QUrl::fromLocalFile(file));
+    m_qml->loadFromModule("ConsoleLauncher", "DesktopApp");
     if (m_qml->rootObjects().isEmpty())
-        setError(tr("Theme '%1' could not be loaded").arg(m_theme));
-    Q_EMIT themeChanged();
-}
-
-void Backend::setTheme(const QString &name) {
-    if (!themes().contains(name) || name == m_theme)
-        return;
-    m_theme = name;
-    async("update_preferences", QVariantMap{{"theme", name}}, [](const Engine::Answer &) {});
-    QMetaObject::invokeMethod(this, [this] { loadTheme(); }, Qt::QueuedConnection);
+        setError(tr("The built-in interface could not be loaded"));
 }
 
 void Backend::setError(const QString &e) {
@@ -101,7 +64,34 @@ void Backend::async(const QString &method, const QVariant &params,
     });
 }
 
-void Backend::request(const QString &method, const QJSValue &params, const QJSValue &callback) {
+void Backend::internalRequest(const QString &method, const QJSValue &params,
+                              const QJSValue &callback) {
+    static const QSet<QString> allowedMethods{
+        QStringLiteral("add_game"),
+        QStringLiteral("add_path"),
+        QStringLiteral("add_custom_emulator"),
+        QStringLiteral("allow_capture"),
+        QStringLiteral("hardware"),
+        QStringLiteral("install_emulator"),
+        QStringLiteral("open_emulator"),
+        QStringLiteral("remove_custom_emulator"),
+        QStringLiteral("remove_game"),
+        QStringLiteral("remove_path"),
+        QStringLiteral("refresh_game_metadata"),
+        QStringLiteral("reset_emulator_tuning"),
+        QStringLiteral("set_emulator_path"),
+        QStringLiteral("set_system_emulator"),
+        QStringLiteral("settings_overview"),
+        QStringLiteral("update_custom_emulator"),
+        QStringLiteral("update_preferences"),
+    };
+    if (!allowedMethods.contains(method)) {
+        const QString error = tr("Interface request blocked: %1").arg(method);
+        qWarning("%s", qPrintable(error));
+        if (callback.isCallable())
+            callback.call({QJSValue(false), QJSValue(error)});
+        return;
+    }
     const QVariant p = params.isUndefined() || params.isNull() ? QVariant() : params.toVariant();
     QJSValue cb = callback;
     async(method, p, [this, method, cb](const Engine::Answer &a) mutable {
@@ -132,7 +122,10 @@ QString Backend::localPath(const QUrl &url) const {
 }
 
 void Backend::reload() {
-    async("library", QVariant(), [this](const Engine::Answer &a) {
+    const std::uint64_t requestId = ++m_libraryRequestId;
+    async("library", QVariant(), [this, requestId](const Engine::Answer &a) {
+        if (requestId != m_libraryRequestId)
+            return;
         if (!a.ok) {
             setError(a.error);
             return;
@@ -224,14 +217,6 @@ void Backend::toggleFullscreen() {
 }
 
 void Backend::quit() { QCoreApplication::quit(); }
-
-QString Backend::fileUrl(const QString &path) const {
-    return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
-}
-
-QString Backend::asset(const QString &relPath) const {
-    return QUrl::fromLocalFile(themesDir() + "/" + m_theme + "/" + relPath).toString();
-}
 
 void Backend::emitNav(const QString &action) {
     if (m_running)

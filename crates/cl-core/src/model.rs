@@ -221,6 +221,65 @@ pub struct Game {
     /// Optional cover image found next to the game or in a `media` folder.
     pub cover: Option<PathBuf>,
     pub favorite: bool,
+    /// Stable identifiers read from the user's own dump. Providers use a
+    /// serial for discs and a CRC for small cartridge images instead of
+    /// guessing solely from the filename.
+    #[serde(default)]
+    pub identity: GameIdentity,
+    /// Enriched catalogue data. It stays optional so the library works fully
+    /// offline and never blocks game launching on a metadata service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<GameMetadata>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameIdentity {
+    /// Platform-native product/game id (for example a GameCube disc id).
+    pub serial: Option<String>,
+    /// Upper-case eight-digit CRC-32 for cartridge images.
+    pub crc32: Option<String>,
+    pub file_size: Option<u64>,
+}
+
+impl GameIdentity {
+    /// Provider-independent lookup key, strongest identifier first.
+    pub fn lookup_key(&self, system: SystemId) -> Option<String> {
+        self.serial
+            .as_ref()
+            .map(|value| format!("{system}:serial:{}", value.to_ascii_uppercase()))
+            .or_else(|| {
+                self.crc32
+                    .as_ref()
+                    .map(|value| format!("{system}:crc32:{}", value.to_ascii_uppercase()))
+            })
+    }
+}
+
+/// Normalised result shared by every future metadata provider.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GameMetadata {
+    pub canonical_title: String,
+    pub alternate_titles: Vec<String>,
+    pub developer: Option<String>,
+    pub publisher: Option<String>,
+    /// ISO-8601 when known; partial values such as `2002` are allowed.
+    pub release_date: Option<String>,
+    pub genres: Vec<String>,
+    pub players: Option<u16>,
+    pub region: Option<String>,
+    pub description: Option<String>,
+    pub age_rating: Option<String>,
+    /// Original artwork URL and its local offline copy.
+    pub cover_url: Option<String>,
+    pub cover_path: Option<PathBuf>,
+    pub cover_source: Option<String>,
+    pub background_url: Option<String>,
+    /// Human-readable provider name and its stable record id.
+    pub source: String,
+    pub source_id: String,
+    /// 0 = filename guess, 100 = exact serial/checksum match.
+    pub confidence: u8,
 }
 
 /// Coarse hardware class. Real tests refine the choice per game.

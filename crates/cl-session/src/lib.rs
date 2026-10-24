@@ -16,6 +16,7 @@
 
 use cl_adapters::LaunchPlan;
 use serde::Serialize;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
@@ -374,7 +375,47 @@ pub fn build_command(
     (cmd, note)
 }
 
-fn start_presentmon(plan: &LaunchPlan, c: &CaptureRequest, file: &Path) -> Result<Child, String> {
+fn presentmon_command(
+    exe: &Path,
+    c: &CaptureRequest,
+    file: &Path,
+    process_id: u32,
+    diagnostic_log: &Path,
+) -> Command {
+    let mut cmd = Command::new(exe);
+    cmd.args([
+        "--process_id",
+        &process_id.to_string(),
+        "--output_file",
+        &file.display().to_string(),
+        "--delay",
+        &c.delay_seconds.to_string(),
+        "--timed",
+        &c.seconds.to_string(),
+        "--terminate_after_timed",
+        "--terminate_on_proc_exit",
+        "--session_name",
+        "ConsoleLauncher",
+        "--stop_existing_session",
+        "--v1_metrics",
+        "--no_track_input",
+        "--no_console_stats",
+    ]);
+    if let Ok(log) = File::create(diagnostic_log) {
+        if let Ok(errors) = log.try_clone() {
+            cmd.stdout(Stdio::from(log));
+            cmd.stderr(Stdio::from(errors));
+        }
+    }
+    cmd
+}
+
+fn start_presentmon(
+    c: &CaptureRequest,
+    file: &Path,
+    process_id: u32,
+    diagnostic_log: &Path,
+) -> Result<Child, String> {
     let exe = match find_capture_tool(c.presentmon.as_deref()) {
         Ok(CaptureTool::PresentMon(p)) => p,
         _ => return Err("PresentMon not found: session not measured".into()),
@@ -384,31 +425,28 @@ fn start_presentmon(plan: &LaunchPlan, c: &CaptureRequest, file: &Path) -> Resul
             "PresentMon has no permission to record: Settings › Smoothness check › Allow".into(),
         );
     }
-    let mut cmd = Command::new(exe);
+    let mut cmd = presentmon_command(&exe, c, file, process_id, diagnostic_log);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW_FLAG);
     }
-    cmd.args([
-        "--process_name",
-        &plan.process_name,
-        "--output_file",
-        &file.display().to_string(),
-        "--delay",
-        &c.delay_seconds.to_string(),
-        "--timed",
-        &c.seconds.to_string(),
-        "--terminate_after_timed",
-        "--session_name",
-        "ConsoleLauncher",
-        "--stop_existing_session",
-        "--v1_metrics",
-    ])
-    .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()
-    .map_err(|e| format!("PresentMon could not start ({e}): session not measured"))
+    cmd.spawn()
+        .map_err(|e| format!("PresentMon could not start ({e}): session not measured"))
+}
+
+fn presentmon_diagnostic(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if clean.is_empty() {
+        return None;
+    }
+    const LIMIT: usize = 500;
+    if clean.len() > LIMIT {
+        clean.truncate(LIMIT);
+        clean.push('…');
+    }
+    Some(clean)
 }
 
 /// Runs the session and blocks until the emulator exits.
@@ -458,9 +496,10 @@ pub fn run(
                 .as_secs()
         ))
     });
+    let pm_log = pm_file.as_ref().map(|file| file.with_extension("log"));
     if cfg!(windows) {
-        if let (Some(c), Some(f)) = (capture, &pm_file) {
-            match start_presentmon(plan, c, f) {
+        if let (Some(c), Some(f), Some(log)) = (capture, &pm_file, &pm_log) {
+            match start_presentmon(c, f, child.id(), log) {
                 Ok(p) => presentmon = Some(p),
                 Err(e) => result.capture_note = Some(e),
             }
@@ -471,17 +510,22 @@ pub fn run(
     result.exit_code = status.code();
     result.played_seconds = started.elapsed().as_secs();
 
+    let mut presentmon_exit = None;
     if let Some(mut pm) = presentmon {
         // PresentMon stops by itself after the timed window; if the game was
         // closed earlier, stop it.
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
-            if let Ok(Some(_)) = pm.try_wait() {
+            if let Ok(Some(status)) = pm.try_wait() {
+                presentmon_exit = status.code();
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        let _ = pm.kill();
+        if presentmon_exit.is_none() {
+            let _ = pm.kill();
+            presentmon_exit = pm.wait().ok().and_then(|status| status.code());
+        }
         result.capture_file = pm_file.filter(|f| f.is_file());
     } else if let Some(c) = capture {
         result.capture_file = newest_csv(&c.dir, started_wall);
@@ -490,11 +534,20 @@ pub fn run(
         capture.filter(|_| result.capture_file.is_none() && result.capture_note.is_none())
     {
         let needed = u64::from(c.delay_seconds + c.seconds);
-        result.capture_note = Some(if result.played_seconds < needed {
-            format!("session shorter than the measurement window ({needed} s): not measured")
-        } else {
-            "no capture file produced".into()
-        });
+        result.capture_note = Some(
+            if let Some(detail) = pm_log.as_deref().and_then(presentmon_diagnostic) {
+                format!("PresentMon did not produce a capture: {detail}")
+            } else if presentmon_exit.is_some_and(|code| code != 0) {
+                format!(
+                    "PresentMon exited with code {}: session not measured",
+                    presentmon_exit.unwrap_or_default()
+                )
+            } else if result.played_seconds < needed {
+                format!("session shorter than the measurement window ({needed} s): not measured")
+            } else {
+                "no capture file produced".into()
+            },
+        );
     }
     Ok(result)
 }
@@ -573,5 +626,31 @@ mod tests {
             ..Default::default()
         };
         assert!(matches!(run(&plan, None), Err(SessionError::Spawn { .. })));
+    }
+
+    #[test]
+    fn presentmon_targets_only_the_launched_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = CaptureRequest {
+            dir: dir.path().into(),
+            delay_seconds: 20,
+            seconds: 60,
+            presentmon: None,
+        };
+        let command = presentmon_command(
+            Path::new("PresentMon.exe"),
+            &request,
+            &dir.path().join("frames.csv"),
+            4242,
+            &dir.path().join("presentmon.log"),
+        );
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(args.windows(2).any(|pair| pair == ["--process_id", "4242"]));
+        assert!(args.contains(&"--terminate_on_proc_exit".into()));
+        assert!(args.contains(&"--no_track_input".into()));
+        assert!(!args.contains(&"--process_name".into()));
     }
 }

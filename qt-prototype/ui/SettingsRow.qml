@@ -7,8 +7,8 @@ Item {
     id: line
     required property var item
     required property bool focused
-    property color text: "#e8ecf4"
-    property color accent: "#ffc440"
+    property color text: "#171717"
+    property color accent: "#2864c7"
     signal activated()
     signal submitted(string value)
 
@@ -24,7 +24,7 @@ Item {
         visible: line.item.type === "row"
         anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3
         radius: 10
-        color: line.focused ? "#232b3d" : "#1b2130"
+        color: line.focused ? "#e1eafa" : "#ffffff"
         border.width: 1
         border.color: line.focused ? (line.item.danger ? "#ff6a5a" : line.accent) : "transparent"
         opacity: line.item.dim ? 0.55 : 1
@@ -41,7 +41,7 @@ Item {
             id: rowValue
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: (line.item.left ? "<font color='#6b7488'>‹ ›</font>  " : "") + (line.item.value || "")
+            text: (line.item.left ? "<font color='#667085'>‹ ›</font>  " : "") + (line.item.value || "")
             textFormat: Text.StyledText
             color: line.text; font.pixelSize: 15; font.weight: Font.DemiBold
         }
@@ -52,7 +52,7 @@ Item {
     Rectangle {
         visible: line.item.type === "block"
         anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: 4
-        radius: 10; color: "#111520"
+        radius: 10; color: "#e9e9e6"
         Column {
             id: blockCol
             x: 14; y: 10; width: parent.width - 28; spacing: 6
@@ -74,12 +74,12 @@ Item {
     Rectangle {
         visible: line.item.type === "input"
         anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3
-        radius: 10; color: "#1b2130"
+        radius: 10; color: "#ffffff"
         border.width: 1; border.color: line.focused || field.activeFocus ? line.accent : "transparent"
         Text { x: 14; y: 8; text: line.item.label || ""; color: line.text; opacity: 0.7; font.pixelSize: 13 }
         Rectangle {
             x: 14; y: 30; width: parent.width - 28; height: 36; radius: 8
-            color: "#0b0d12"; border.color: "#2a3244"
+            color: "#ffffff"; border.color: "#bcbcb7"
             TextInput {
                 id: field
                 anchors.fill: parent; anchors.margins: 9

@@ -84,9 +84,8 @@ jobs:
           mkdir -p "$out/tools/presentmon"
           cp build/console-launcher-qt.exe build/console_launcher_engine.dll "$out/"
           cp target/release/clctl.exe "$out/"
-          cp -r build/themes "$out/themes"
           cp "$SDL2_ROOT/lib/x64/SDL2.dll" "$out/"
-          windeployqt --release --no-translations --qmldir qt-prototype/themes --qmldir qt-prototype/ui "$out/console-launcher-qt.exe"
+          windeployqt --release --no-translations --qmldir qt-prototype/ui "$out/console-launcher-qt.exe"
           # Frame measurement tool (MIT), shipped next to the launcher.
           gh release download "v${PRESENTMON_VERSION}" --repo GameTechDev/PresentMon \
             --pattern "PresentMon-${PRESENTMON_VERSION}-x64.exe" --dir "$out/tools/presentmon"
@@ -94,7 +93,7 @@ jobs:
             "https://raw.githubusercontent.com/GameTechDev/PresentMon/v${PRESENTMON_VERSION}/LICENSE.txt"
           cp CHANGELOG.md docs/prototype/config.example.toml "$out/"
           echo "::notice title=Windows package::Qt $(qmake -query QT_VERSION), $(ls "$out/tools/presentmon" | tr '\n' ' '), $(du -sh "$out" | cut -f1)"
-      # Starts the packaged launcher on the Windows runner: the theme must
+      # Starts the packaged launcher on the Windows runner: the interface must
       # load. The launcher's log is shown in the run summary either way.
       - name: Smoke test
         shell: pwsh
@@ -147,7 +146,6 @@ jobs:
           app=AppDir/usr/bin
           mkdir -p "$app/tools/mangohud"
           cp build/console-launcher-qt build/libconsole_launcher_engine.so build/cargo/release/clctl "$app/"
-          cp -r build/themes "$app/themes"
           # Frame measurement tool (MIT), shipped with the launcher.
           gh release download "v${MANGOHUD_VERSION}" --repo flightlessmango/MangoHud --pattern "MangoHud-*.tar.gz" --dir mh
           tar -xzf mh/MangoHud-*.tar.gz -C mh
@@ -161,7 +159,7 @@ jobs:
           curl -fsSL -o linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy linuxdeploy-plugin-qt
           export QMAKE="$QT_ROOT_DIR/bin/qmake"
-          export QML_SOURCES_PATHS="$PWD/qt-prototype/themes:$PWD/qt-prototype/ui"
+          export QML_SOURCES_PATHS="$PWD/qt-prototype/ui"
           export EXTRA_QT_MODULES="svg"
           export LDAI_OUTPUT=ConsoleLauncher-x86_64.AppImage
           export APPIMAGE_EXTRACT_AND_RUN=1

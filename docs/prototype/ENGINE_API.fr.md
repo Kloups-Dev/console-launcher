@@ -16,7 +16,7 @@ cl_engine_close(e);
 - Les messages d'erreur suivent la langue choisie dans les réglages (`fr` ou `en`).
 - Une erreur interne ne fait jamais planter l'appelant : elle revient sous la forme `{"ok": false}`.
 
-Dans les thèmes QML, les mêmes méthodes s'appellent avec `Launcher.request(méthode, paramètres, rappel)`.
+L'interface QML intégrée utilise une passerelle privée `Launcher.internalRequest(...)`. Elle n'appartient pas au contrat des futurs thèmes et aucun QML externe n'est exécuté.
 
 ## Méthodes
 
@@ -25,7 +25,10 @@ Dans les thèmes QML, les mêmes méthodes s'appellent avec `Launcher.request(m�
 | `version` | — | Version du moteur |
 | `config` | — | Contenu de `config.toml` (rapide : aucun scan du disque) |
 | `library` | — | `{systems, games}` |
+| `add_game` | `system`, `path` | Ajoute directement un fichier de jeu après vérification de son extension |
+| `remove_game` | `path` | Retire un jeu ajouté directement, sans supprimer le fichier |
 | `game_info` | `id` | Ce que ferait un lancement : émulateur, palier de qualité, remarques. N'écrit rien. Quand le jeu ne peut pas démarrer : `{ready: false, code, emulatorId, error}` |
+| `refresh_game_metadata` | `id` | Recherche explicitement la fiche dans Title Screen et la jaquette GameTDB pour GameCube/Wii, Nintendo DS et Wii U. La fiche et l'image PNG/JPEG validée sont mises en cache puis les métadonnées sont renvoyées, ou `null`. Le scan normal ne fait jamais de réseau. |
 | `play` | `id` | Lance le jeu, attend la fermeture de l'émulateur, mesure et ajuste. Rapport : fluidité, palier suivant, remarques |
 | `toggle_favorite` | `id` | Nouvel état (`true` / `false`) |
 | `set_quality` | `id`, `step` | Fixe un palier à la main ; la recherche automatique s'arrête pour ce jeu |
@@ -37,6 +40,7 @@ Dans les thèmes QML, les mêmes méthodes s'appellent avec `Launcher.request(m�
 | `remove_custom_emulator` | `id` | — |
 | `reset_emulator_tuning` | `id` | Rend à l'optimisation automatique les réglages modifiés à la main |
 | `open_emulator` | `id` | Ouvre l'émulateur sans jeu |
+| `install_emulator` | `id` | Télécharge, vérifie et active une version gérée disponible (Dolphin 2609a sous Windows) |
 | `add_path` | `path` | `{kind: "games" \| "emulators" \| "emulator" \| "already_added"}` |
 | `remove_path` | `path` | — |
 | `update_preferences` | au choix `autoTune`, `systemTweaks`, `presentmonPath` (`""` l'efface), `language`, `theme` | — |

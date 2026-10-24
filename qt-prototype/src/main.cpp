@@ -9,10 +9,10 @@
 #include <QGuiApplication>
 #include <QMutex>
 #include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QQmlError>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QtQml/qqml.h>
 
 #include "backend.h"
 #include "gamepad.h"
@@ -23,8 +23,8 @@ namespace {
 QFile *g_log = nullptr;
 QMutex g_logLock;
 
-// Every Qt and QML message goes to the log file (and to stderr), so a theme
-// that fails to load on someone's machine can be diagnosed.
+// Every Qt and QML message goes to the log file (and to stderr), so an
+// interface failure on someone's machine can be diagnosed.
 void logHandler(QtMsgType type, const QMessageLogContext &, const QString &msg) {
     static const char *names[] = {"debug", "warning", "critical", "fatal", "info"};
     const QString line = QStringLiteral("%1 [%2] %3\n")
@@ -57,7 +57,8 @@ QString openLog() {
     return QString();
 }
 
-/// Shown when the theme cannot be loaded, instead of an invisible program.
+/// Shown when the built-in interface cannot be loaded, instead of an
+/// invisible program.
 void showLoadError(QQmlApplicationEngine &engine, const QStringList &errors, const QString &logPath) {
     QString text = errors.join("\n");
     text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
@@ -71,7 +72,7 @@ Window {
     title: "Console Launcher"
     Column {
         x: 28; y: 24; width: parent.width - 56; spacing: 12
-        Text { text: "Le thème n'a pas pu être chargé · The theme could not be loaded"; color: "#ffc440"; font.pixelSize: 20; font.bold: true }
+        Text { text: "L'interface n'a pas pu être chargée · The interface could not be loaded"; color: "#ffc440"; font.pixelSize: 20; font.bold: true }
         Text { width: parent.width; wrapMode: Text.Wrap; color: "#e8ecf4"; font.pixelSize: 13; text: "%1" }
         Text { width: parent.width; wrapMode: Text.Wrap; color: "#8a93a6"; font.pixelSize: 13; text: "Journal / Log: %2" }
     }
@@ -112,15 +113,18 @@ int main(int argc, char *argv[]) {
                          for (const QQmlError &e : list)
                              qmlErrors << e.toString();
                      });
-    engine.rootContext()->setContextProperty("Launcher", &backend);
+    // A registered singleton is visible only to the trusted, compiled QML
+    // module. Context properties are intentionally avoided: they are invisible
+    // to static tooling and would become a broad ambient API.
+    qmlRegisterSingletonInstance("ConsoleLauncher", 1, 0, "Launcher", &backend);
     backend.setQmlEngine(&engine);
-    qInfo("loading theme '%s'", qPrintable(backend.theme()));
-    backend.loadTheme();
+    qInfo("loading built-in interface");
+    backend.loadInterface();
     const bool loaded = !engine.rootObjects().isEmpty();
     if (loaded) {
-        qInfo("theme loaded");
+        qInfo("interface loaded");
     } else {
-        qCritical("theme '%s' failed to load", qPrintable(backend.theme()));
+        qCritical("built-in interface failed to load");
         for (const QString &e : qmlErrors)
             qCritical("%s", qPrintable(e));
         if (!smokeTest)
@@ -139,10 +143,12 @@ int main(int argc, char *argv[]) {
     backend.reload();
 
     if (smokeTest) {
-        // CI check: the theme must load and the library request must answer.
+        // CI check: the interface and its settings hierarchy must load, and
+        // the library request must answer.
         QObject::connect(&backend, &Backend::libraryChanged, &app, [&] {
             qInfo("library answered: %lld systems", static_cast<long long>(backend.systems().size()));
         });
+        QTimer::singleShot(250, &backend, [&backend] { backend.openSettings(); });
         QTimer::singleShot(4000, &app, [&app, loaded] {
             qInfo("smoke test %s", loaded ? "passed" : "FAILED");
             app.exit(loaded ? 0 : 1);

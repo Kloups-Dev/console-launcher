@@ -1,5 +1,13 @@
 # Creating a theme
 
+> **Current status: external themes are disabled.** The application only loads
+> the QML interface compiled into the executable. The old `Main.qml` entry
+> points were removed and are no longer executed. The future
+> Theme v1 format will be a validated data pack (manifest, colours, fonts,
+> images and sounds), with the built-in functional interface as its fallback.
+> This prevents a theme from calling the engine or breaking start-up. The rest
+> of this document describes the old prototype and is no longer a supported API.
+
 *[Version française](THEMES.fr.md)*
 
 A theme is a folder holding a `Main.qml` file written in QML, Qt Quick's declarative language. It decides **everything** on screen: layout, colours, animations, sounds, menu order. The launcher provides the data (consoles, games, covers, settings) and the controller actions. The theme never needs to know which emulator is used.
