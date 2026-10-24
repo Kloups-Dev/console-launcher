@@ -1,106 +1,87 @@
-# Console Launcher — contexte et suivi commun
+# Console Launcher
 
-Ce document est la référence commune pour les humains et leurs IA.
+Console Launcher est un lanceur de jeux orienté manette pour Windows et Linux.
+Le projet vise un parcours simple : **menu → console → jeu → partie → retour au menu**, en s'appuyant sur des émulateurs existants.
 
-## Le projet
+> ⚠️ **Statut actuel : pré-version expérimentale.**
+> Le projet est utilisable en prototype, mais il n'est pas encore validé sur toutes les configurations réelles (Windows physique, vrais émulateurs, vraies manettes, vraies parties).
 
-Un logiciel d'émulation à installer sur PC, avec un menu original, joli et fluide, utilisable à la manette. Consoles accessibles de gauche à droite, puis sélection des jeux. La PS3 est un exemple de simplicité de navigation, pas une interface à reproduire.
+## Fonctionnalités actuelles
 
-Parcours : **menu → console → jeu → partie → retour au menu**. Les menus et bibliothèques des émulateurs ne sont pas une étape visible. Les réglages restent accessibles et compréhensibles : il ne s'agit pas de supprimer tous les paramètres.
+- Interface Qt Quick (QML) pilotable à la manette, au clavier et à la souris.
+- Bibliothèque de jeux par console avec lancement direct.
+- Détection et configuration d'émulateurs reconnus, avec support d'émulateurs personnalisés.
+- Réglages accessibles depuis l'interface (consoles, émulateurs, dossiers, mesure de fluidité).
+- Outils de mesure intégrés dans les paquets de test : PresentMon (Windows) et MangoHud (Linux).
+- Moteur Rust séparé de l'interface, avec commandes CLI (`clctl`) pour diagnostiquer et tester.
 
-Réutiliser les émulateurs existants. Intention de publier en open source ; nom définitif et licence à choisir. Aucun jeu ou BIOS fourni. Pas d'objectif de réseau social demandé. Aucun gain de performance encore démontré.
+## Plateformes
 
-## Fonctionnement entre IA
+- **Windows** : paquet de test x64.
+- **Linux** : paquet AppImage x64.
 
-- Au début de chaque nouvelle phase de code, synchroniser le dépôt, lire ce document et consulter les changements des autres branches utiles. Signaler si l'accès réseau empêche d'actualiser le contexte.
-- Chaque IA est indépendante dans le périmètre fixé par les humains. Aucune IA ne dirige l'autre, ne lui attribue de tâche ou de fichiers, ni ne lui impose une technologie ou une voie de développement.
-- Les choix existants décrivent le travail réalisé ; ils peuvent être améliorés ou remis en question. Préserver les changements d'autrui et signaler les conflits.
-- Après chaque push de code, mettre à jour l'état et ajouter une courte entrée au journal. Envoyer cette mise à jour dans un petit commit de suivi. Un push de suivi documentaire ne demande pas une nouvelle entrée : pas de boucle.
-- Indiquer date, branche, commit de code, changements, vérifications réellement faites et limites. Distinguer travail envoyé, fusionné et encore local. Ne pas écrire de secrets ici.
-- Garder l'état actuel court ; le détail historique reste dans Git et les pull requests. Si deux IA changent le journal, conserver les deux contributions lors de la résolution du conflit.
+## Prérequis
 
-## État actuel
+### Utilisation des paquets de test
 
-- Dépôt : https://github.com/Kloups-Dev/console-launcher. Cykalos est administrateur du dépôt.
-- Prototype proposé dans la [PR n°1](https://github.com/Kloups-Dev/console-launcher/pull/1), branche `feat/desktop-foundation`, pas encore fusionné à cette mise à jour.
-- Prototype : Windows, C#/.NET 8 et WPF ; cœur indépendant de l'interface. Menu horizontal, bibliothèque JSON, navigation clavier/XInput, sélection de Dolphin et ajout d'un fichier GameCube pour lancement direct puis retour au menu.
-- Limites : présentation provisoire ; PS2/SNES en aperçu ; titres fictifs. Dolphin doit être installé et ses contrôles configurés. Dialogues encore dépendants du clavier/souris. Pas d'installateur autonome.
-- Vérifications : compilation Release sans erreur ni avertissement, 23 contrôles locaux réussis, contrôles GitHub réussis avant simplification documentaire, rendu WPF inspecté. Aucun essai avec vrai jeu/manette physique, ni benchmark.
-- Second prototype sur la branche `feat/rust-tauri-prototype` (Windows et Linux, Rust + Tauri 2, v0.2.0) dans `crates/`, `app/` et `themes/`, sans fichier commun avec la PR n°1 : thèmes HTML/CSS/JS modifiables, écran de réglages complet à la manette, 8 émulateurs reconnus (RetroArch, Dolphin, PCSX2, mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés, optimisation automatique par jeu (estimation puis mesure de fluidité) qui laisse tranquilles les réglages modifiés à la main, mises à jour des émulateurs avec retour arrière. Détails : `docs/prototype/README.fr.md`. Les deux voies techniques restent à comparer avant d'en fusionner une sur `main`.
-- Interface Qt Quick sur la branche `feat/qt-quick-comparison` (v0.3.1) : reprend tout le travail de la v0.2.0 ; le moteur Rust y est intégré sous forme de bibliothèque (`cl-api`, `cl-ffi`) au lieu de passer par `clctl` ; Qt 6.8 LTS ; écran de réglages en QML ; PresentMon (Windows) et MangoHud (Linux) fournis dans les paquets. L'interface Tauri a été retirée de cette branche à la demande de Cykalos et reste sur `feat/rust-tauri-prototype`. Détails : `docs/prototype/README.fr.md`.
+- Vos propres jeux, BIOS/firmwares et installations d'émulateurs (non fournis par ce dépôt).
+- Sous Windows, une autorisation peut être nécessaire pour la mesure de fluidité (PresentMon).
 
-## Essayer le prototype
+### Compilation depuis les sources
 
-Ces commandes concernent la branche du prototype. Prérequis : Windows et SDK .NET 8, version 8.0.300 ou ultérieure dans la série 8.
+- Rust stable (workspace : `rust-version = 1.80`).
+- CMake 3.21+.
+- Compilateur C++17.
+- Qt 6.8+ (Core, Gui, Qml, Quick, Quick Dialogs).
+- SDL2.
 
-```powershell
-dotnet run --project src/Launcher.Desktop/Launcher.Desktop.csproj
-dotnet build src/Launcher.Desktop/Launcher.Desktop.csproj --configuration Release
-dotnet run --project tests/Launcher.Checks/Launcher.Checks.csproj --configuration Release
+Détails par système : [docs/prototype/DEPENDENCIES.fr.md](docs/prototype/DEPENDENCIES.fr.md).
+
+## Télécharger
+
+- Pré-versions publiées : [Releases GitHub](https://github.com/Kloups-Dev/console-launcher/releases)
+- Artefacts de build (tests de branche) : onglet **Actions** du dépôt, exécution **CI**.
+
+Guides d'installation : [docs/installation.md](docs/installation.md).
+
+## Compiler et tester depuis les sources
+
+### Build Qt Quick
+
+```bash
+cmake -S qt-prototype -B build-qt -DCMAKE_BUILD_TYPE=Release
+cmake --build build-qt
+./build-qt/console-launcher-qt
 ```
 
-Flèches/XInput pour naviguer ; Entrée/A pour choisir ; Échap/B pour revenir ; F11 pour le plein écran. Dans Réglages, sélectionner Dolphin.exe, ajouter son fichier GameCube puis jouer. Fermer la partie dans Dolphin pour revenir.
+### Vérifications Rust (comme dans la CI)
 
-Bibliothèque : `%LOCALAPPDATA%/ConsoleLauncher/library.json`. Les jeux ne sont ni copiés ni déplacés ; les réglages et sauvegardes Dolphin existants sont utilisés. Le dossier portable nécessite .NET Desktop Runtime 8.
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo run -p cl-cli -- --help
+```
 
-## Journal partagé
+## Limites connues
 
-### 2026-10-22 — Premier socle publié
+- Validation incomplète sur des machines Windows physiques.
+- Validation incomplète avec de vrais jeux/manettes/émulateurs sur tout le périmètre.
+- Seuils de mesure/ajustement de fluidité encore à calibrer en conditions réelles.
+- Certaines parties des réglages d'émulateurs restent à confirmer sur installations réelles.
 
-- Code : `7b52097`, branche `feat/desktop-foundation`, PR n°1 ouverte.
-- Fait : prototype, navigation, stockage et premier adaptateur Dolphin ; vérifications et limites ci-dessus.
-- Suivi : `fc67ebb` retire les attributions de rôles. Les choix techniques restent révisables.
-- Ouvert : essais réels, contrôles en jeu, présentation et mesures de fluidité. Aucune attribution à une IA.
+Dépannage : [docs/troubleshooting.md](docs/troubleshooting.md).
 
-### 2026-10-22 — Suivi documentaire simplifié
+## Documentation
 
-- Fait : un seul document général, suppression des anciens guides et consignes redondantes.
-- Vérifié : renvois documentaires et cohérence du contenu ; aucun code applicatif modifié.
-- Publication : simplification fusionnée sur `main` par la PR n°3. Le prototype a été aligné dans `a2f635d` ; sa PR n°1 reste ouverte.
+- Installation : [docs/installation.md](docs/installation.md)
+- Contribution : [CONTRIBUTING.md](CONTRIBUTING.md)
+- Dépannage : [docs/troubleshooting.md](docs/troubleshooting.md)
+- Roadmap : [docs/roadmap.md](docs/roadmap.md)
+- Journal technique et historique : [docs/development-log.md](docs/development-log.md)
+- Documentation prototype détaillée : [docs/prototype/README.fr.md](docs/prototype/README.fr.md)
 
-### 2026-10-22 — Second prototype (Rust + Tauri) sur une branche dédiée
+## Licence
 
-- Code : branche `feat/rust-tauri-prototype`, à comparer avec la PR n°1 ; `main` n'est pas modifié.
-- Fait : application Tauri, moteur en crates Rust, deux thèmes modèles, outil `clctl`, CI Windows/Linux avec exécutables de test téléchargeables, documentation FR/EN dans `docs/prototype/`, `CHANGELOG.md`.
-- Vérifié : 47 tests, `cargo clippy -D warnings` et `cargo fmt` sans erreur sous Linux ; interface essayée sur écran virtuel Linux avec de faux émulateurs (navigation, menu, thèmes, lancement).
-- Limites : aucun essai sous Windows, avec un vrai émulateur, une vraie manette ou une vraie mesure de fluidité ; seuils d'optimisation à calibrer. Aucun fichier de la PR n°1 modifié ; seul `.gitignore` a reçu deux lignes (`/target/`, `/app/src-tauri/gen/`).
-
-### 2026-10-22 — Correction du lint Windows (Rust + Tauri)
-
-- Code : `c642e1e`, branche `feat/rust-tauri-prototype`, envoyé.
-- Fait : l'erreur de lecture de `config.toml` est mise en boîte ; `clippy::result_large_err` bloquait la CI Windows.
-- Vérifié : `cargo fmt`, `cargo clippy -D warnings` et tests de `cl-core` sous Linux ; résultat Windows donné par la CI.
-- Limites : l'exécutable de test Windows a été lancé par un humain ; RetroArch absent, donc aucune partie lancée.
-
-### 2026-10-22 — Réglages complets et nouveaux émulateurs (Rust + Tauri, v0.2.0)
-
-- Code : `3cf24ae`, branche `feat/rust-tauri-prototype`, envoyé.
-- Fait : écran de réglages à la manette (émulateur par console, émulateurs, dossiers, mesure, optimisations système) ; profils TOML (mGBA, DuckStation, PPSSPP, melonDS, Cemu) et émulateurs personnalisés ; console Wii U ; dossiers d'émulateurs dont celui de RetroBat ; détection des réglages modifiés à la main avec bouton de réactivation et sauvegarde des INI ; priorité et GPU dédié sous Windows ; scan qui ignore les dossiers d'émulateurs ; doc FR/EN `docs/prototype/EMULATORS.*.md`.
-- Vérifié : 64 tests, `cargo clippy -D warnings` et `cargo fmt` sous Linux ; CI Windows réussie (compilation, lint, tests, paquet) ; parcours essayés sur écran virtuel Linux avec une fausse installation RetroBat (migration des chemins, choix automatique, modification à la main puis réactivation). Le job Linux de la CI était bloqué sur l'installation des paquets de GitHub au moment de cette entrée.
-- Limites : aucun essai avec les vrais émulateurs ni sous Windows réel ; noms de clés des nouveaux émulateurs à confirmer ; melonDS et Cemu sans réglages optimisés ; PresentMon à installer à part pour la mesure sous Windows.
-
-### 2026-10-23 — Interface Qt Quick avec le moteur intégré (v0.3.0)
-
-- Code : `f784eae` à `7a497d9`, branche `feat/qt-quick-comparison`, envoyé. Branche reçue en bundle (`896df46`), fusionnée avec `feat/rust-tauri-prototype` (`745a9eb`).
-- Fait : moteur intégré à l'application Qt (crates `cl-api` et `cl-ffi`, bibliothèque `console_launcher_engine`, appels sur des fils de travail) ; Qt 6.8 LTS minimum ; panneau de réglages QML partagé par les thèmes (`import ConsoleLauncher`) ; PresentMon 2.6.0 et MangoHud 0.8.4 fournis, bouton d'autorisation de la mesure sous Windows ; CI : paquet Windows (windeployqt) et AppImage Linux ; interface Tauri retirée de cette branche ; doc FR/EN (`ENGINE_API`, `THEMES` réécrit pour QML, `DEPENDENCIES`).
-- Vérifié : tests Rust, `cargo clippy -D warnings` et `cargo fmt` sous Linux et Windows (CI) ; application compilée avec Qt 6.8.4 et essayée sur écran virtuel Linux avec une fausse installation RetroBat (bibliothèque, détail des jeux, réglages, choix d'émulateur, page d'un émulateur manquant, lancement avec un faux PPSSPP) ; paquets Windows et Linux produits par la CI.
-- Limites : paquets non ouverts sur une vraie machine ; MangoHud fourni et autorisation PresentMon jamais essayés avec une vraie partie ; sélecteurs de fichiers non essayés à la manette ; PR n°1 (WPF) non modifiée.
-
-### 2026-10-23 — Pré-version de test Qt Quick (v0.3.0-qt)
-
-- Code : `88cdcea` puis suivi CI, branche `feat/qt-quick-comparison`, envoyé.
-- Fait : un tag `v…` publie les paquets Windows et Linux en pré-version GitHub (jamais « dernière version ») ; une version créée depuis la page GitHub (qui crée le tag) est complétée par la CI avec les paquets.
-- Limites : l'environnement de l'IA ne peut pas envoyer de tag ; le tag `v0.3.0-qt` est à créer par un humain. La page des versions est commune au dépôt ; la pré-version reste rattachée à cette branche par son tag.
-
-### 2026-10-23 — Correction du démarrage sous Windows (Qt Quick, v0.3.1)
-
-- Code : `8cf79d5` et `03cf2a3`, branche `feat/qt-quick-comparison`, envoyé.
-- Fait : la v0.3.0 tournait sans fenêtre sous Windows (« SettingsPanel is not a type ») car le module QML `ConsoleLauncher` n'était pas dans les paquets ; il est maintenant compilé dans le programme. Ajouts : journaux `console-launcher.log` et `console-launcher-engine.log`, fenêtre d'erreur si un thème ne charge pas, manettes SDL sur leur propre fil après l'affichage, test `--smoke-test` lancé par la CI sur les deux paquets.
-- Vérifié : panne reproduite avec le paquet v0.3.0 sous Wine et sur la machine Windows de la CI ; après correction, test de démarrage réussi sous Windows Server 2025 et dans l'AppImage Linux (CI), et depuis un dossier propre sous Linux.
-- Limites : pas encore relancé sur la machine Windows d'un humain.
-
-### 2026-10-23 — Pré-versions automatiques (Qt Quick)
-
-- Code : `78be4bc`, branche `feat/qt-quick-comparison`, envoyé.
-- Fait : la CI publie seule la pré-version `v<version>-qt` (paquets + section du changelog) quand la version de `Cargo.toml` n'a pas encore de release ; plus de tag à créer à la main. Un tag `v…` manuel reste possible.
-- Limites : la publication suit la réussite des tests de démarrage ; une version déjà publiée n'est pas remplacée.
+La licence du projet **n'est pas encore choisie**.
+Aucun fichier `LICENSE` n'est publié pour le moment.
