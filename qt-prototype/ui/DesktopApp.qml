@@ -293,7 +293,7 @@ ApplicationWindow {
             Action { text: app.t("Ajouter un jeu…", "Add a game…"); shortcut: StandardKey.Open; onTriggered: app.chooseGame() }
             Action { text: app.t("Ajouter un dossier…", "Add a folder…"); shortcut: "Ctrl+Shift+O"; onTriggered: folderDialog.open() }
             MenuSeparator { }
-            Action { text: app.t("Actualiser", "Refresh"); shortcut: StandardKey.Refresh; onTriggered: app.refresh() }
+            Action { text: app.t("Lancer le jeu sélectionné", "Launch selected game"); enabled: app.currentGame !== null && app.pending === 0; onTriggered: app.launchGame() }
             MenuSeparator { }
             Action { text: app.t("Quitter", "Quit"); shortcut: StandardKey.Quit; onTriggered: Launcher.quit() }
         }
@@ -306,6 +306,8 @@ ApplicationWindow {
         }
         Menu {
             title: app.t("&Affichage", "&View")
+            Action { text: app.t("Actualiser la bibliothèque", "Refresh library"); shortcut: StandardKey.Refresh; onTriggered: app.refresh() }
+            MenuSeparator { }
             Action { text: app.t("Rechercher", "Search"); shortcut: StandardKey.Find; onTriggered: searchField.forceActiveFocus() }
             Action { text: app.t("Catalogue des consoles", "System catalogue"); checkable: true; checked: app.sidebarVisible; onTriggered: app.sidebarVisible = checked }
             MenuSeparator { }
@@ -327,11 +329,6 @@ ApplicationWindow {
             anchors.rightMargin: 8
             spacing: 4
 
-            ToolButton { text: app.t("Ajouter…", "Add…"); onClicked: app.chooseGame() }
-            ToolButton { text: app.t("Dossier…", "Folder…"); onClicked: folderDialog.open() }
-            ToolButton { text: app.t("Actualiser", "Refresh"); onClicked: app.refresh() }
-            ToolSeparator { }
-            ToolButton { text: app.t("Lancer", "Launch"); font.bold: true; enabled: app.currentGame !== null && app.pending === 0; onClicked: app.launchGame() }
             Item { Layout.fillWidth: true }
             TextField {
                 id: searchField
@@ -516,8 +513,8 @@ ApplicationWindow {
                                   ? app.t("Aucun jeu ne correspond à la recherche.", "No game matches the search.")
                                   : app.currentEmulator && !app.currentEmulator.found
                                     ? app.t("Cette console est disponible. Installe d’abord ", "This system is available. First install ") + app.currentEmulator.name + "."
-                                    : app.t("Aucun jeu. Utilise Ajouter ou Dossier dans la barre d'outils.",
-                                            "No games. Use Add or Folder in the toolbar.")
+                                    : app.t("Aucun jeu. Utilise Fichier → Ajouter un jeu ou Ajouter un dossier.",
+                                            "No games. Use File → Add a game or Add a folder.")
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
                             color: app.palette.mid
