@@ -237,21 +237,80 @@ impl EmulatorAdapter for Dolphin {
                 plan.settings_report.applied.push(k.clone());
             }
         }
-        if let Some(overrides) = ctx.controller_overrides {
+        if let Some(overrides) = ctx.controller_overrides.filter(|m| !m.is_empty()) {
+            // InputConfig reads GCPadNew.ini; --config does not load pad bindings.
+            let mut validated = Vec::new();
             for (key, value) in overrides {
-                if !key.starts_with("GCPad") && !key.starts_with("Wiimote") {
-                    return Err(AdapterError::Unsupported(format!(
-                        "Dolphin controller key '{key}' is not a GCPad/Wiimote setting"
-                    )));
-                }
-                if value.contains('\n') || value.contains('\r') {
+                let (section, entry) = key.split_once('/').ok_or_else(|| {
+                    AdapterError::Unsupported(format!("Invalid Dolphin controller key '{key}'"))
+                })?;
+                if !matches!(section, "GCPad1" | "GCPad2" | "GCPad3" | "GCPad4")
+                    || entry.is_empty()
+                    || key.contains('=')
+                    || key.contains(['\n', '\r', '[', ']'])
+                    || value.contains(['\n', '\r'])
+                {
                     return Err(AdapterError::Unsupported(
-                        "Dolphin controller values cannot contain line breaks".into(),
+                        "Invalid GameCube controller binding".into(),
                     ));
                 }
-                plan.args.push(format!("--config={key}={value}"));
-                plan.settings_report.applied.push(key.clone());
+                validated.push((
+                    section,
+                    entry,
+                    value.strip_prefix("Keyboard/").unwrap_or(value),
+                ));
             }
+            let dir = config_dir(ctx.exe, ctx.mode, ctx.generated_dir).ok_or_else(|| {
+                AdapterError::NotFound("Dolphin controller config directory".into())
+            })?;
+            std::fs::create_dir_all(&dir)?;
+            let file = dir.join("GCPadNew.ini");
+            let previous = match std::fs::read_to_string(&file) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(e.into()),
+            };
+            let backup = dir.join("GCPadNew.ini.before-console-launcher");
+            if file.exists() && !backup.exists() {
+                std::fs::copy(&file, backup)?;
+            }
+            let ledger_path = ctx.generated_dir.join("dolphin-controller-ledger.json");
+            let mut ledger: BTreeMap<String, String> = std::fs::read_to_string(&ledger_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+            let mut doc = IniDoc::parse(&previous);
+            for (section, entry, value) in validated {
+                let key = format!("{section}/{entry}");
+                if let (Some(written), Some(current)) = (ledger.get(&key), doc.get(section, entry))
+                {
+                    if written != &current {
+                        plan.settings_report.kept_user_value.push(key);
+                        continue;
+                    }
+                }
+                doc.set(section, entry, value);
+                ledger.insert(key, value.to_owned());
+            }
+            std::fs::write(&file, doc.render())?;
+            std::fs::create_dir_all(ctx.generated_dir)?;
+            std::fs::write(
+                ledger_path,
+                serde_json::to_string_pretty(&ledger).unwrap_or_default(),
+            )?;
+            // Enable each explicitly configured GameCube controller port.
+            for port in 1..=4 {
+                if overrides
+                    .keys()
+                    .any(|k| k.starts_with(&format!("GCPad{port}/")))
+                {
+                    plan.args
+                        .push(format!("--config=Dolphin.Core.SIDevice{}=6", port - 1));
+                }
+            }
+            plan.settings_report
+                .applied
+                .extend(overrides.keys().cloned());
         }
         plan.args
             .push(format!("--exec={}", ctx.game.path.display()));
@@ -306,7 +365,7 @@ mod tests {
                 game: &g,
                 step: &ladder[0],
                 api: GraphicsApi::Vulkan,
-                mode: EmulatorMode::External,
+                mode: EmulatorMode::Managed,
                 generated_dir: dir.path(),
                 locked_keys: &[],
                 bios_dir: None,
@@ -315,11 +374,71 @@ mod tests {
             .unwrap();
         assert!(plan
             .args
-            .contains(&"--config=GCPad1/Buttons/A=Keyboard/Space".to_string()));
+            .contains(&"--config=Dolphin.Core.SIDevice0=6".to_string()));
         assert!(plan
             .settings_report
             .applied
             .contains(&"GCPad1/Buttons/A".to_string()));
+        let saved =
+            std::fs::read_to_string(dir.path().join("dolphin-user/Config/GCPadNew.ini")).unwrap();
+        assert_eq!(
+            IniDoc::parse(&saved).get("GCPad1", "Buttons/A").as_deref(),
+            Some("Space")
+        );
+    }
+
+    #[test]
+    fn xbox_profile_backs_up_and_preserves_other_players_and_manual_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("dolphin-user/Config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let file = cfg.join("GCPadNew.ini");
+        let original = "[GCPad1]\nButtons/A = Old\n[GCPad2]\nDevice = Keep player two\n";
+        std::fs::write(&file, original).unwrap();
+        let game = game(SystemId::GameCube, "/g/gc/a.rvz");
+        let ladder = Dolphin.quality_ladder(SystemId::GameCube);
+        let overrides = BTreeMap::from([
+            ("GCPad1/Device".into(), "XInput/0/Gamepad".into()),
+            ("GCPad1/Buttons/A".into(), "`Button A`".into()),
+        ]);
+        let run = || {
+            Dolphin
+                .prepare(&LaunchContext {
+                    exe: Path::new("/dolphin.exe"),
+                    game: &game,
+                    step: &ladder[0],
+                    api: GraphicsApi::Vulkan,
+                    mode: EmulatorMode::Managed,
+                    generated_dir: dir.path(),
+                    locked_keys: &[],
+                    bios_dir: None,
+                    controller_overrides: Some(&overrides),
+                })
+                .unwrap()
+        };
+        run();
+        assert_eq!(
+            std::fs::read_to_string(cfg.join("GCPadNew.ini.before-console-launcher")).unwrap(),
+            original
+        );
+        let mut doc = IniDoc::parse(&std::fs::read_to_string(&file).unwrap());
+        assert_eq!(
+            doc.get("GCPad1", "Device").as_deref(),
+            Some("XInput/0/Gamepad")
+        );
+        assert_eq!(
+            doc.get("GCPad2", "Device").as_deref(),
+            Some("Keep player two")
+        );
+        doc.set("GCPad1", "Buttons/A", "Manual");
+        std::fs::write(&file, doc.render()).unwrap();
+        let report = run();
+        assert!(report
+            .settings_report
+            .kept_user_value
+            .contains(&"GCPad1/Buttons/A".into()));
+        let doc = IniDoc::parse(&std::fs::read_to_string(file).unwrap());
+        assert_eq!(doc.get("GCPad1", "Buttons/A").as_deref(), Some("Manual"));
     }
 
     #[test]

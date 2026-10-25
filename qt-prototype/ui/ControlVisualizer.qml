@@ -12,6 +12,10 @@ Item {
     property string selectedTarget: "face-bottom"
     property bool assignmentMode: false
     property var assignments: ({})
+    property string notice: ""
+    property bool saving: false
+    readonly property bool canApply: system === "gamecube" && device.currentIndex === 2 && Qt.platform.os === "windows" && player.currentIndex === 0
+    readonly property var targetLabels: ["A", "B", "X", "Y", "Gâchette L", "Gâchette R", "Start / Pause", "Croix : haut", "Croix : bas", "Croix : gauche", "Croix : droite"]
     signal closeRequested()
 
     readonly property bool keyboard: device.currentIndex === 0
@@ -58,6 +62,11 @@ Item {
         const out = {}
         for (const code in sourceState) {
             const value = calibrated(code, sourceState[code] || 0)
+            let assigned = false
+            for (const target in assignments) {
+                if (assignments[target] === code) { setTarget(out, target, value); assigned = true }
+            }
+            if (assigned) continue
             if (keyboard) {
                 if (code === "left") setTarget(out, "leftx", -value)
                 else if (code === "right") setTarget(out, "leftx", value)
@@ -92,12 +101,14 @@ Item {
         targetState = out
     }
     function accept(event) {
+        if (!visible) return
+        // Escape must work regardless of the selected input device.
+        if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
+            Qt.callLater(root.close); return
+        }
         if ((keyboard && event.source !== "keyboard")
             || (mouse && event.source !== "mouse")
             || (!keyboard && !mouse && event.source !== "controller")) return
-        if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
-            closeRequested(); return
-        }
         if (assignmentMode && Number(event.value) > 0) {
             const next = Object.assign({}, assignments)
             next[selectedTarget] = event.control
@@ -121,37 +132,39 @@ Item {
             + ":p" + (player.currentIndex + 1) + ":" + system
     }
     function saveMapping() {
+        notice = "Réglages du test enregistrés. Pour jouer, configure les commandes dans l’émulateur."
+
         Launcher.internalRequest("save_control_mapping",
                                  {key: mappingKey(), mapping: targetState},
                                  function(ok, result) {
                                      if (!ok) console.warn("mapping save failed:", result)
                                  })
-        if (system === "gamecube" && keyboard) {
-            const nativeMapping = {}
-            const paths = {
-                "face-bottom": "GCPad1/Buttons/A", "face-right": "GCPad1/Buttons/B",
-                "face-left": "GCPad1/Buttons/X", "face-top": "GCPad1/Buttons/Y",
-                "leftshoulder": "GCPad1/Triggers/L", "rightshoulder": "GCPad1/Triggers/R",
-                "start": "GCPad1/Buttons/Start", "dpad-up": "GCPad1/DPad/Up",
-                "dpad-down": "GCPad1/DPad/Down", "dpad-left": "GCPad1/DPad/Left",
-                "dpad-right": "GCPad1/DPad/Right"
-            }
-            const names = {
-                "space": "Space", "enter": "Return", "up": "Up", "down": "Down",
-                "left": "Left", "right": "Right", "tab": "Tab"
-            }
-            for (const target in assignments) {
-                const path = paths[target]
-                const source = assignments[target]
-                if (path && source)
-                    nativeMapping[path] = "Keyboard/" + (names[source] || source.toUpperCase())
-            }
-            Launcher.internalRequest("save_emulator_mapping",
-                                     {key: "dolphin:gamecube", mapping: nativeMapping},
-                                     function(ok, result) {
-                                         if (!ok) console.warn("Dolphin mapping save failed:", result)
-                                     })
+    }
+    function applyXbox() {
+        if (!canApply || saving) return
+        const keys = {
+            "Device": "XInput/" + xboxSlot.currentIndex + "/Gamepad",
+            "Buttons/A": "`Button A`", "Buttons/B": "`Button B`",
+            "Buttons/X": "`Button X`", "Buttons/Y": "`Button Y`",
+            "Buttons/Z": "`Shoulder R`", "Buttons/Start": "Start",
+            "Main Stick/Up": "`Left Y+`", "Main Stick/Down": "`Left Y-`",
+            "Main Stick/Left": "`Left X-`", "Main Stick/Right": "`Left X+`",
+            "C-Stick/Up": "`Right Y+`", "C-Stick/Down": "`Right Y-`",
+            "C-Stick/Left": "`Right X-`", "C-Stick/Right": "`Right X+`",
+            "Triggers/L": "`Trigger L` > 0.9", "Triggers/R": "`Trigger R` > 0.9",
+            "Triggers/L-Analog": "`Trigger L`", "Triggers/R-Analog": "`Trigger R`",
+            "D-Pad/Up": "`Pad N`", "D-Pad/Down": "`Pad S`",
+            "D-Pad/Left": "`Pad W`", "D-Pad/Right": "`Pad E`"
         }
+        const mapping = {}
+        for (const key in keys) mapping["GCPad1/" + key] = keys[key]
+        saving = true
+        Launcher.internalRequest("save_emulator_mapping", {key:"dolphin:gamecube", mapping:mapping}, function(ok, result) {
+            root.saving = false
+            root.notice = ok
+                ? "Profil Xbox enregistré pour Dolphin / GameCube, joueur 1. Il sera écrit dans Dolphin au prochain lancement du jeu. Ferme puis relance le jeu depuis le lanceur."
+                : "Échec de l’enregistrement : " + result
+        })
     }
     function loadMapping() {
         Launcher.internalRequest("get_control_mapping", {key: mappingKey()},
@@ -195,7 +208,7 @@ Item {
     function close() { Launcher.controlCapture = false; reset(); closeRequested() }
 
     onKeyboardChanged: reset()
-    onSystemChanged: { rebuildTarget(); loadMapping() }
+    onSystemChanged: { notice = ""; rebuildTarget(); loadMapping() }
     onVisibleChanged: {
         Launcher.controlCapture = visible
         if (visible) loadMapping()
@@ -217,19 +230,47 @@ Item {
             Layout.fillWidth: true
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 2
-                Label { text: root.keyboard ? "TESTEUR CLAVIER" : "TESTEUR MANETTE"; font.pixelSize: 22; font.bold: true; color: "black" }
-                Label { text: "Boutons, gâchettes et direction des sticks en direct"; color: "#555" }
+                Label { text: "COMMANDES ET MANETTES"; font.pixelSize: 22; font.bold: true; color: "black" }
+                Label { text: "1. Choisis ton périphérique   →   2. Choisis la console   →   3. Configure le jeu"; color: "#555" }
             }
+            Button { text: "← Retour"; onClicked: root.close() }
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 8
+            Label { text: "Périphérique"; }
             ComboBox {
-                id: device; currentIndex: 0; model: ["Clavier", "Souris", "Xbox", "PS5"]
-                onCurrentIndexChanged: root.reset()
+                id: device; currentIndex: /xbox|xinput/i.test(Launcher.padName) ? 2 : 0; model: ["Clavier", "Souris", "Manette Xbox", "Manette PS5"]
+                onCurrentIndexChanged: { root.notice = ""; root.reset() }
                 enabled: true; Layout.preferredWidth: 220
             }
-            ComboBox { id: systemBox; model: ["GameCube", "PlayStation 2", "Xbox", "PS5"]; currentIndex: 1; Layout.preferredWidth: 160 }
+            Label { text: "Console cible"; }
+            ComboBox { id: systemBox; model: ["GameCube", "PlayStation 2", "Xbox", "PS5"]; currentIndex: 0; Layout.preferredWidth: 160 }
+            CheckBox { id: advanced; text: "Réglages du test (avancés)"; checked: false }
             CheckBox { id: animations; text: "Animations"; checked: true }
-            Button { text: "Sauvegarder"; onClicked: root.saveMapping() }
-            Button { text: "Restaurer conseillé"; onClicked: root.restoreRecommended() }
-            Button { text: "Fermer"; onClicked: root.close() }
+            Button { text: "Enregistrer le test"; onClicked: root.saveMapping() }
+            Button { text: "Réinitialiser le test"; onClicked: root.restoreRecommended() }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: statusText.implicitHeight + 24
+            color: "#e8eef5"; radius: 6
+            Label {
+                id: statusText; anchors.fill: parent; anchors.margins: 12
+                wrapMode: Text.WordWrap; color: "#17324d"
+                text: root.notice || (root.canApply
+                    ? "Test en direct ci-dessous. Pour jouer avec ta Xbox : clique sur « Utiliser dans Dolphin », puis relance ton jeu GameCube depuis le lanceur. A/B/X/Y, sticks et gâchettes utilisent le profil conseillé."
+                    : "Cet écran teste les entrées. Les autres consoles et périphériques se configurent dans leur émulateur ; les dessins seuls ne changent pas les commandes en jeu.")
+            }
+        }
+        Flow {
+            Layout.fillWidth: true; spacing: 10
+            Button { text: "Configurer dans l’émulateur…"; visible: !root.canApply; onClicked: { root.close(); Launcher.openSettings({ page: "emulators" }) } }
+            Label { text: "Xbox Windows"; visible: root.canApply }
+            ComboBox { id: xboxSlot; visible: root.canApply; model: ["Manette XInput 1", "Manette XInput 2", "Manette XInput 3", "Manette XInput 4"] }
+            Button { text: root.saving ? "Enregistrement…" : "Utiliser dans Dolphin"; visible: root.canApply; enabled: !root.saving; onClicked: root.applyXbox() }
+            Label { text: "Si aucune réaction dans Dolphin, essaie le numéro XInput suivant."; visible: root.canApply; color: "#555" }
         }
 
         RowLayout {
@@ -298,13 +339,14 @@ Item {
                 Label {
                     anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottomMargin: 12; width: parent.width - 30
-                    text: "Correspondance visuelle — affectations non appliquées"
+                    text: "Aperçu des entrées reçues — la configuration en jeu est indiquée en haut"
                     horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: "#555"; font.pixelSize: 11
                 }
             }
         }
 
         GridLayout {
+            visible: advanced.checked
             Layout.fillWidth: true; columns: width > 740 ? 4 : 2; columnSpacing: 24; rowSpacing: 6
             Repeater {
                 model: [
@@ -320,7 +362,7 @@ Item {
                     Layout.fillWidth: true; spacing: 2
                     Label { text: modelData.label; color: "#555"; font.pixelSize: 11 }
                     Label {
-                        visible: !root.keyboard && !root.mouse || modelData.setting
+                        visible: (!root.keyboard && !root.mouse) || !!modelData.setting
                         text: modelData.setting === "deadzone"
                             ? Math.round(Number(root.targetState.__deadzone || 0.12) * 100) + " %"
                             : modelData.setting === "sensitivity"
@@ -334,6 +376,7 @@ Item {
             }
         }
         RowLayout {
+            visible: advanced.checked
             Layout.fillWidth: true
             Label { text: "Profil"; color: "#555" }
             ComboBox {
@@ -348,7 +391,7 @@ Item {
                 from: 0; to: 0.5
                 value: Number(root.targetState.__deadzone || 0.12)
                 Layout.fillWidth: true
-                onValueChanged: {
+                onMoved: {
                     const copy = Object.assign({}, root.targetState)
                     copy.__deadzone = value
                     root.targetState = copy
@@ -377,8 +420,9 @@ Item {
             }
         }
         RowLayout {
+            visible: advanced.checked
             Layout.fillWidth: true
-            Label { text: "Affecter"; color: "#555" }
+            Label { text: "Test : commande cible"; color: "#555" }
             ComboBox {
                 id: targetPicker
                 model: [
@@ -387,6 +431,8 @@ Item {
                     "dpad-up", "dpad-down", "dpad-left", "dpad-right"
                 ]
                 currentIndex: 0
+                displayText: root.targetLabels[currentIndex]
+                delegate: ItemDelegate { required property int index; width: targetPicker.width; text: root.targetLabels[index]; highlighted: targetPicker.highlightedIndex === index }
                 onCurrentTextChanged: root.selectedTarget = currentText
                 Layout.preferredWidth: 180
             }
@@ -406,7 +452,8 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Label { Layout.fillWidth: true; text: lastControl ? "Reçu : " + lastControl + "  " + lastValue.toFixed(2) : "Appuie sur une touche, un bouton ou bouge un joystick."; color: "black" }
-            Label { text: root.keyboard ? "Échap pour fermer" : "Utilise le bouton Fermer"; color: "#555" }
+            Label { text: "Échap ou Retour pour fermer"; color: "#555" }
         }
     }
 }
+
