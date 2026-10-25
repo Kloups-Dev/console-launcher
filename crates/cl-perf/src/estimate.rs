@@ -47,6 +47,24 @@ pub struct Estimate {
     pub warnings: Vec<String>,
 }
 
+/// Conservative starting choices, not a measured GPU benchmark or audio test.
+pub struct DolphinBudget {
+    pub hybrid_shaders: bool,
+    pub minimum_audio_buffer_ms: u32,
+}
+
+pub fn dolphin_budget(hw: &HwSummary, system: SystemId) -> DolphinBudget {
+    let cpu_margin = hw.cpu_score as f32 / required_cpu(system.info().cost);
+    DolphinBudget {
+        hybrid_shaders: hw.gpu_class == GpuClass::Discrete && hw.vram_mb >= 4096,
+        minimum_audio_buffer_ms: if cpu_margin < 1.25 || hw.ram_mb < 8192 {
+            80
+        } else {
+            24
+        },
+    }
+}
+
 /// CPU score assumed necessary for full speed, by system cost (1–10).
 fn required_cpu(cost: u8) -> f32 {
     match cost {
@@ -149,6 +167,25 @@ mod tests {
         }
     }
     const APIS: [GraphicsApi; 2] = [GraphicsApi::Vulkan, GraphicsApi::OpenGl];
+
+    #[test]
+    fn dolphin_general_settings_follow_separate_cpu_and_gpu_limits() {
+        let strong = dolphin_budget(&hw(1500, GpuClass::Discrete, 8192), SystemId::Wii);
+        assert!(strong.hybrid_shaders);
+        assert_eq!(strong.minimum_audio_buffer_ms, 24);
+        let integrated = dolphin_budget(&hw(1500, GpuClass::Integrated, 8192), SystemId::Wii);
+        assert!(!integrated.hybrid_shaders);
+        assert_eq!(integrated.minimum_audio_buffer_ms, 24);
+        let slow_cpu = dolphin_budget(&hw(400, GpuClass::Discrete, 8192), SystemId::Wii);
+        assert!(slow_cpu.hybrid_shaders);
+        assert_eq!(slow_cpu.minimum_audio_buffer_ms, 80);
+        let mut low_ram = hw(1500, GpuClass::Discrete, 8192);
+        low_ram.ram_mb = 4096;
+        assert_eq!(
+            dolphin_budget(&low_ram, SystemId::Wii).minimum_audio_buffer_ms,
+            80
+        );
+    }
 
     #[test]
     fn strong_pc_gets_high_resolution() {

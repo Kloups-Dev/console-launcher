@@ -1294,6 +1294,17 @@ impl Engine {
             adapter.id(),
             self.config.perf.experience,
         ));
+        if adapter.id() == "dolphin" {
+            let budget = cl_perf::estimate::dolphin_budget(&self.hw_summary(), game.system);
+            step.settings.insert(
+                "GFX.Settings.ShaderCompilationMode".into(),
+                if budget.hybrid_shaders { "2" } else { "0" }.into(),
+            );
+            if let Some(buffer) = step.settings.get_mut("Dolphin.Core.AudioBufferSize") {
+                let requested = buffer.parse::<u32>().unwrap_or(80);
+                *buffer = requested.max(budget.minimum_audio_buffer_ms).to_string();
+            }
+        }
         let (measure, mut notes) = self.measure_decision(&tuning);
         let generated = self.paths.generated_dir();
 
@@ -1643,7 +1654,7 @@ mod tests {
         assert_eq!(p.step_label, "1440p");
         assert!(!p.measure);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-3"));
         assert!(p
             .plan
             .args
@@ -1687,7 +1698,7 @@ mod tests {
         let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
         assert_eq!(tuning.state.current, 3);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-3"));
     }
 
     #[test]

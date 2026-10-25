@@ -248,3 +248,13 @@ Automatic quality learning requires a known output cadence (currently NTSC
 Dolphin and Game Boy-family RetroArch). Unknown/PAL switchable cadences keep
 metrics without learning from an assumed 50/60 Hz target. Changing priority
 or Dolphin policy invalidates old automatic measurements.
+
+Dolphin general presets also use the CPU estimate, GPU class/VRAM and RAM:
+shader compilation stays specialized on integrated/unknown/small GPUs;
+hybrid shaders are estimated suitable for dedicated GPUs with at least 4 GiB.
+A CPU margin below 1.25x the system estimate, or RAM below 8 GiB, keeps at
+least 80 ms of audio buffering. Stronger machines retain the selected priority.
+These thresholds are conservative starting heuristics, not calibrated GPU or
+audio benchmarks. CPU and graphics limits remain separate: a single combined
+score cannot safely select every setting. Game compatibility defaults and
+manual settings remain authoritative. Physical audio latency is not measured.
