@@ -117,14 +117,17 @@ jobs:
         shell: pwsh
         run: |
           $dir = "dist/ConsoleLauncher"
+          # Hosted runners have no stable hardware graphics adapter.
+          $env:QT_QUICK_BACKEND = 'software'
           $env:CONSOLE_LAUNCHER_HOME = "$env:RUNNER_TEMP\cl-home"
           $p = Start-Process -FilePath "$dir/console-launcher-qt.exe" -ArgumentList "--smoke-test" -PassThru
           if (-not $p.WaitForExit(60000)) { $p.Kill(); $code = 2 } else { $code = $p.ExitCode }
           $log = if (Test-Path "$dir/console-launcher.log") { (Get-Content "$dir/console-launcher.log") -join '%0A' } else { "no log file" }
           if ($code -eq 0) { Write-Output "::notice title=Smoke test (Windows)::$log" }
-          else { Write-Output "::error title=Smoke test (Windows), exit $code::$log"; exit 1 }
+          else { Write-Output "Smoke test exit code: $code"; Write-Output "::error title=Smoke test (Windows)::$log"; exit 1 }
           Remove-Item "$dir/console-launcher.log", "$dir/console-launcher-engine.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: console-launcher-qt-windows-x64
           path: dist
