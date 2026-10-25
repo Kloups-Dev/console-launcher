@@ -388,6 +388,60 @@ mod tests {
     }
 
     #[test]
+    fn xbox_profile_backs_up_and_preserves_other_players_and_manual_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("dolphin-user/Config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let file = cfg.join("GCPadNew.ini");
+        let original = "[GCPad1]\nButtons/A = Old\n[GCPad2]\nDevice = Keep player two\n";
+        std::fs::write(&file, original).unwrap();
+        let game = game(SystemId::GameCube, "/g/gc/a.rvz");
+        let ladder = Dolphin.quality_ladder(SystemId::GameCube);
+        let overrides = BTreeMap::from([
+            ("GCPad1/Device".into(), "XInput/0/Gamepad".into()),
+            ("GCPad1/Buttons/A".into(), "`Button A`".into()),
+        ]);
+        let run = || {
+            Dolphin
+                .prepare(&LaunchContext {
+                    exe: Path::new("/dolphin.exe"),
+                    game: &game,
+                    step: &ladder[0],
+                    api: GraphicsApi::Vulkan,
+                    mode: EmulatorMode::Managed,
+                    generated_dir: dir.path(),
+                    locked_keys: &[],
+                    bios_dir: None,
+                    controller_overrides: Some(&overrides),
+                })
+                .unwrap()
+        };
+        run();
+        assert_eq!(
+            std::fs::read_to_string(cfg.join("GCPadNew.ini.before-console-launcher")).unwrap(),
+            original
+        );
+        let mut doc = IniDoc::parse(&std::fs::read_to_string(&file).unwrap());
+        assert_eq!(
+            doc.get("GCPad1", "Device").as_deref(),
+            Some("XInput/0/Gamepad")
+        );
+        assert_eq!(
+            doc.get("GCPad2", "Device").as_deref(),
+            Some("Keep player two")
+        );
+        doc.set("GCPad1", "Buttons/A", "Manual");
+        std::fs::write(&file, doc.render()).unwrap();
+        let report = run();
+        assert!(report
+            .settings_report
+            .kept_user_value
+            .contains(&"GCPad1/Buttons/A".into()));
+        let doc = IniDoc::parse(&std::fs::read_to_string(file).unwrap());
+        assert_eq!(doc.get("GCPad1", "Buttons/A").as_deref(), Some("Manual"));
+    }
+
+    #[test]
     fn rejects_non_dolphin_controller_keys() {
         let dir = tempfile::tempdir().unwrap();
         let g = game(SystemId::GameCube, "/g/gc/a.rvz");
