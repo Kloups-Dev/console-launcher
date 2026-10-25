@@ -15,6 +15,7 @@
 //! - Downloads come only from the emulator's official release page.
 //!   Nothing is bundled with the launcher.
 
+pub mod retroarch;
 pub mod sources;
 
 use cl_core::config::{EmulatorConfig, UpdatePolicy};

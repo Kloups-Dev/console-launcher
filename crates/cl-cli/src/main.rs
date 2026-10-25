@@ -37,6 +37,8 @@ enum Cmd {
     Plan { query: String },
     /// Launch a game, measure if needed, update its profile.
     Play { query: String },
+    /// Install the managed engine/core needed by a game without starting it.
+    Prepare { query: String },
     /// Analyse a frame-time capture (MangoHud / PresentMon CSV).
     Analyse {
         file: std::path::PathBuf,
@@ -230,8 +232,14 @@ fn run() -> Result<()> {
                 }
             });
         }
+        Cmd::Prepare { query } => {
+            let game = find_game(&engine, &query)?;
+            engine.ensure_game_ready(&game)?;
+            println!("Ready: {}", game.title);
+        }
         Cmd::Play { query } => {
             let game = find_game(&engine, &query)?;
+            engine.ensure_game_ready(&game)?;
             let r = engine.play(&game)?;
             print(json, &r, || {
                 let outcome = if r.session.exit_code == Some(0) {

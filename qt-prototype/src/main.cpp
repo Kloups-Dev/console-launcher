@@ -12,6 +12,8 @@
 #include <QQmlError>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QQuickWindow>
+#include <QImage>
 #include <QtQml/qqml.h>
 
 #include "backend.h"
@@ -86,6 +88,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     app.setOrganizationName("ConsoleLauncher");
     app.setApplicationName("console-launcher-qt");
+    app.setApplicationVersion(QStringLiteral(CL_VERSION));
     const bool smokeTest = app.arguments().contains("--smoke-test");
 
     const QString logPath = openLog();
@@ -122,7 +125,8 @@ int main(int argc, char *argv[]) {
     backend.setQmlEngine(&engine);
     qInfo("loading built-in interface");
     backend.loadInterface();
-    const bool loaded = !engine.rootObjects().isEmpty();
+    const bool loaded = !engine.rootObjects().isEmpty() &&
+        (!backend.performance()->supported() || engine.rootObjects().size() >= 2);
     if (loaded) {
         qInfo("interface loaded");
     } else {
@@ -132,6 +136,25 @@ int main(int argc, char *argv[]) {
         if (!smokeTest)
             showLoadError(engine, qmlErrors.isEmpty() ? QStringList{backend.lastError()} : qmlErrors,
                           logPath);
+    }
+
+    if (app.arguments().contains("--overlay-preview")) {
+        if (!loaded) return 1;
+        const int outputAt = app.arguments().indexOf("--preview-output");
+        if (outputAt < 0 || outputAt + 1 >= app.arguments().size()) return 2;
+        const QString output = app.arguments().at(outputAt + 1);
+        const bool compact = app.arguments().contains("--compact-preview");
+        QTimer::singleShot(250, &backend, [&backend, compact] { backend.performance()->showPreview(compact); });
+        QTimer::singleShot(1500, &app, [&] {
+            bool saved = false;
+            for (auto *root : engine.rootObjects()) {
+                auto *window = qobject_cast<QQuickWindow *>(root);
+                if (window && window->title().contains("Statistiques en direct"))
+                    saved = window->grabWindow().save(output);
+            }
+            app.exit(saved ? 0 : 3);
+        });
+        return app.exec();
     }
 
     // Controllers start after the window, on their own thread: a slow or
@@ -146,15 +169,27 @@ int main(int argc, char *argv[]) {
     backend.reload();
 
     if (smokeTest) {
+        // Exercise the same bridge as the Play button without downloading
+        // or launching anything. An unknown game must reach the Rust engine.
+        engine.globalObject().setProperty("prepareBridgePassed", false);
+        const QJSValue prepareCallback = engine.evaluate(QStringLiteral(
+            "(function(ok, result) { prepareBridgePassed = !ok && "
+            "String(result).indexOf('unknown game __smoke_missing_game__') >= 0; })"));
+        QJSValue prepareParams = engine.newObject();
+        prepareParams.setProperty("id", QStringLiteral("__smoke_missing_game__"));
+        backend.internalRequest(QStringLiteral("prepare_game"), prepareParams, prepareCallback);
         // CI check: the interface and its settings hierarchy must load, and
         // the library request must answer.
         QObject::connect(&backend, &Backend::libraryChanged, &app, [&] {
             qInfo("library answered: %lld systems", static_cast<long long>(backend.systems().size()));
         });
         QTimer::singleShot(250, &backend, [&backend] { backend.openSettings(); });
-        QTimer::singleShot(4000, &app, [&app, loaded] {
-            qInfo("smoke test %s", loaded ? "passed" : "FAILED");
-            app.exit(loaded ? 0 : 1);
+        QTimer::singleShot(4000, &app, [&app, &engine, loaded] {
+            const bool bridgePassed = engine.globalObject().property("prepareBridgePassed").toBool();
+            const bool passed = loaded && bridgePassed;
+            qInfo("prepare_game bridge %s", bridgePassed ? "passed" : "FAILED");
+            qInfo("smoke test %s", passed ? "passed" : "FAILED");
+            app.exit(passed ? 0 : 1);
         });
     }
     return app.exec();

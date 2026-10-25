@@ -15,7 +15,7 @@ Item {
     width: ListView.view ? ListView.view.width : 600
     height: item.type === "block" ? blockCol.implicitHeight + 20
           : item.type === "input" ? 78
-          : Math.max(48, rowLabel.implicitHeight + 24)
+          : Math.max(54, rowText.implicitHeight + 28)
 
     function focusInput() { field.forceActiveFocus(); }
 
@@ -24,18 +24,30 @@ Item {
         visible: line.item.type === "row"
         anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3
         radius: 10
-        color: line.focused ? "#e1eafa" : "#ffffff"
+        color: line.focused ? "#e1eafa" : choiceMouse.containsMouse ? "#f0f5fc" : "#ffffff"
         border.width: 1
-        border.color: line.focused ? (line.item.danger ? "#ff6a5a" : line.accent) : "transparent"
+        border.color: line.focused ? (line.item.danger ? "#c84534" : line.accent) : "#dce2ea"
         opacity: line.item.dim ? 0.55 : 1
-        Text {
-            id: rowLabel
+        Column {
+            id: rowText
             anchors.left: parent.left; anchors.leftMargin: 14
             anchors.right: rowValue.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: line.item.label || ""
-            textFormat: Text.StyledText; wrapMode: Text.Wrap
-            color: line.text; font.pixelSize: 15
+            spacing: 5
+            Text {
+                id: rowLabel
+                width: parent.width
+                text: line.item.label || ""
+                textFormat: Text.StyledText; wrapMode: Text.Wrap
+                color: line.text; font.pixelSize: 15; font.weight: Font.DemiBold
+            }
+            Text {
+                width: parent.width
+                visible: !!line.item.description
+                text: line.item.description || ""
+                textFormat: Text.PlainText; wrapMode: Text.WordWrap
+                color: "#536174"; font.pixelSize: 13; lineHeight: 1.2
+            }
         }
         Text {
             id: rowValue
@@ -44,21 +56,24 @@ Item {
             text: (line.item.left ? "<font color='#667085'>‹ ›</font>  " : "") + (line.item.value || "")
             textFormat: Text.StyledText
             color: line.text; font.pixelSize: 15; font.weight: Font.DemiBold
+            width: Math.min(implicitWidth, parent.width * 0.38)
+            elide: Text.ElideRight
         }
-        MouseArea { anchors.fill: parent; onClicked: line.activated() }
+        MouseArea { id: choiceMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: line.activated() }
     }
 
     // ---- Text block ----
     Rectangle {
         visible: line.item.type === "block"
         anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: 4
-        radius: 10; color: "#e9e9e6"
+        radius: 10; color: "#edf1f7"
         Column {
             id: blockCol
             x: 14; y: 10; width: parent.width - 28; spacing: 6
             Text {
                 visible: !!line.item.title
-                text: line.item.title || ""; color: line.text; opacity: 0.65; font.pixelSize: 13
+                width: parent.width; wrapMode: Text.WordWrap
+                text: line.item.title || ""; color: "#24364b"; font.pixelSize: 15; font.bold: true
             }
             Text {
                 visible: !!line.item.html

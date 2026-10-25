@@ -18,6 +18,8 @@ pub enum CaptureError {
     NoColumn,
     #[error("capture too short ({0} frames)")]
     TooShort(usize),
+    #[error("invalid target refresh rate")]
+    InvalidTarget,
 }
 
 const COLUMNS: [&str; 4] = [
@@ -108,6 +110,17 @@ pub struct FrameStats {
 }
 
 pub fn analyse(frametimes_ms: &[f64]) -> Result<FrameStats, CaptureError> {
+    analyse_inner(frametimes_ms, None)
+}
+
+pub fn analyse_with_target(frametimes_ms: &[f64], target: f64) -> Result<FrameStats, CaptureError> {
+    if !target.is_finite() || target <= 0.0 {
+        return Err(CaptureError::InvalidTarget);
+    }
+    analyse_inner(frametimes_ms, Some(target))
+}
+
+fn analyse_inner(frametimes_ms: &[f64], target: Option<f64>) -> Result<FrameStats, CaptureError> {
     let ft = if frametimes_ms.len() > SKIP_FRAMES + MIN_FRAMES {
         &frametimes_ms[SKIP_FRAMES..]
     } else {
@@ -118,10 +131,12 @@ pub fn analyse(frametimes_ms: &[f64]) -> Result<FrameStats, CaptureError> {
     }
     let total_ms: f64 = ft.iter().sum();
     let median_fps = 1000.0 / median(ft);
-    let target_fps = [60.0, 50.0]
-        .into_iter()
-        .min_by(|a: &f64, b: &f64| (a - median_fps).abs().total_cmp(&(b - median_fps).abs()))
-        .unwrap_or(60.0);
+    let target_fps = target.unwrap_or_else(|| {
+        [60.0, 50.0]
+            .into_iter()
+            .min_by(|a: &f64, b: &f64| (a - median_fps).abs().total_cmp(&(b - median_fps).abs()))
+            .unwrap_or(60.0)
+    });
     let budget = 1000.0 / target_fps * 1.5;
     let stutters = ft.iter().filter(|&&t| t > budget).count();
     Ok(FrameStats {
@@ -222,5 +237,15 @@ mod tests {
             analyse(&series(100, 16.0)),
             Err(CaptureError::TooShort(_))
         ));
+    }
+
+    #[test]
+    fn known_ntsc_rate_cannot_be_reclassified_as_pal_when_running_slow() {
+        let s = analyse_with_target(&series(2000, 20.0), 60.0).unwrap();
+        assert_eq!(s.target_fps, 60.0);
+        assert_eq!(verdict(&s), Verdict::Stutters);
+        let s = analyse_with_target(&series(2000, 1000.0 / 59.7275), 59.7275).unwrap();
+        assert_eq!(verdict(&s), Verdict::Smooth);
+        assert!(analyse_with_target(&series(2000, 16.67), f64::NAN).is_err());
     }
 }

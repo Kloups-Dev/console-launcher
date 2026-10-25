@@ -42,6 +42,23 @@ et ne jamais écraser silencieusement un choix manuel.
 
 ## Priorités actuelles
 
+### Parcours intégré en cours de validation — moteur rétro Windows
+
+Le moteur officiel RetroArch est utilisé en interne : téléchargement du runtime
+et du pack de cœurs vérifié, préparation au bouton Lancer, sauvegardes persistantes
+hors versions, commandes automatiques et options image/reprise simples. Les options
+avancées restent celles du moteur (F1). Ce n'est pas un hôte Libretro natif réécrit.
+
+Critères de validation : démarrage depuis une installation neuve, retour propre,
+réouverture d'une sauvegarde, conservation lors d'un changement de version, tests
+avec de vrais jeux et manettes. Les tests techniques ne valident pas à eux seuls
+la fidélité audio/vidéo ni toutes les fonctionnalités de tous les cœurs.
+
+Restent à construire/valider : téléchargement individuel versionné de chaque cœur
+plutôt que le pack initial, configuration avancée unifiée dans notre interface,
+profils et correctifs validés jeu par jeu, gestion contrôlée des mises à jour des
+cœurs et états instantanés, et intégration multiplateforme équivalente.
+
 ### P1 — Contrôles compréhensibles et testables
 
 Objectif : savoir immédiatement si le clavier ou la manette est reconnu et

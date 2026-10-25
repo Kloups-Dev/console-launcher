@@ -17,7 +17,7 @@ use cl_core::watch::SettingsWatch;
 use cl_core::{Game, SystemId, SystemInfo};
 use cl_hwprobe::{GpuKind, HardwareReport};
 use cl_perf::estimate::{estimate, GpuClass, HwSummary, LadderKind};
-use cl_perf::frametime::{analyse, parse_file, verdict, FrameStats, Verdict};
+use cl_perf::frametime::{analyse, analyse_with_target, parse_file, verdict, FrameStats, Verdict};
 use cl_perf::store::{GameTuning, ProfileStore, RunRecord};
 use cl_perf::tuner::TuneState;
 use cl_session::{CaptureRequest, SessionRecord, SessionResult};
@@ -27,6 +27,30 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Expected presentations only where the adapter/core cadence is known.
+fn known_output_rate(game: &Game, adapter: &str) -> Option<f64> {
+    if adapter == "dolphin" {
+        match game
+            .identity
+            .serial
+            .as_deref()?
+            .as_bytes()
+            .get(3)?
+            .to_ascii_uppercase()
+        {
+            b'E' | b'J' | b'K' | b'W' => Some(60.0),
+            // PAL titles can select 50 Hz or 60 Hz at runtime: do not guess.
+            _ => None,
+        }
+    } else if adapter == "retroarch"
+        && matches!(game.system, SystemId::Gb | SystemId::Gbc | SystemId::Gba)
+    {
+        Some(59.7275)
+    } else {
+        None
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -971,13 +995,19 @@ impl Engine {
 
     /// Opens an emulator without a game, so the user can set it up.
     pub fn open_emulator(&self, id: &str) -> Result<(), EngineError> {
-        let (adapter, _, exe) = self.find_emulator(id)?;
+        let (adapter, cfg, exe) = self.find_emulator(id)?;
         let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
             id: id.into(),
             emulator: adapter.name().into(),
         })?;
         let mut cmd = std::process::Command::new(&exe);
         cmd.args(adapter.setup_args());
+        if id == "dolphin" && cfg.mode == EmulatorMode::Managed {
+            cmd.arg(format!(
+                "--user={}",
+                self.paths.generated_dir().join("dolphin-user").display()
+            ));
+        }
         if let Some(dir) = exe.parent() {
             cmd.current_dir(dir);
         }
@@ -1046,8 +1076,22 @@ impl Engine {
     /// Loads the game's tuning, or creates it from the estimate. A hardware
     /// change restarts the search from a fresh estimate.
     pub fn tuning(&mut self, game: &Game, adapter: &dyn EmulatorAdapter) -> GameTuning {
-        let ladder_len = adapter.quality_ladder(game.system).len();
+        let ladder_len = if adapter.gpu_bound_ladder() {
+            adapter.quality_ladder(game.system).len().min(
+                self.config
+                    .perf
+                    .experience
+                    .resolution_ceiling()
+                    .saturating_add(1),
+            )
+        } else {
+            adapter.quality_ladder(game.system).len()
+        };
         let mut fingerprint = self.hw_fingerprint();
+        fingerprint.push_str(&format!(
+            "|experience-{}",
+            self.config.perf.experience.key()
+        ));
         let tuning_revision = adapter.tuning_revision();
         if tuning_revision > 0 {
             fingerprint.push_str(&format!("|{}-policy-{tuning_revision}", adapter.id()));
@@ -1092,6 +1136,75 @@ impl Engine {
         self.find_emulator(&emulator)
     }
 
+    /// Explicit first-launch preparation. Network operations never happen in previews.
+    pub fn ensure_game_ready(&mut self, game: &Game) -> Result<(), EngineError> {
+        let id = self.emulator_id_for(game.system);
+        if id == "retroarch" && game.system == SystemId::Psx {
+            let bios = self
+                .config
+                .bios_dir
+                .clone()
+                .unwrap_or_else(|| self.paths.root.join("bios"));
+            let serial = game.identity.serial.as_deref().unwrap_or("");
+            let required = if serial.starts_with("SLES") || serial.starts_with("SCES") {
+                "scph5502.bin"
+            } else if serial.starts_with("SLPS")
+                || serial.starts_with("SLPM")
+                || serial.starts_with("SCPS")
+            {
+                "scph5500.bin"
+            } else {
+                "scph5501.bin"
+            };
+            let present = std::fs::read_dir(&bios).ok().is_some_and(|files| {
+                files.flatten().any(|f| {
+                    f.file_name()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(required)
+                        && f.path().is_file()
+                })
+            });
+            if !present {
+                return Err(cl_adapters::AdapterError::NotFound(format!(
+                    "BIOS PlayStation requis : {required}. Ajoute ton BIOS dans {} ou choisis son dossier dans Réglages > Bibliothèque et stockage.", bios.display()
+                )).into());
+            }
+        }
+        let (_, cfg, mut exe) = self.find_emulator(&id)?;
+        if exe.is_none() {
+            // An explicitly selected external executable is never replaced.
+            if cfg.path.is_some() {
+                return Err(EngineError::EmulatorMissing {
+                    id: id.clone(),
+                    emulator: id,
+                });
+            }
+            self.install_emulator(&id)?;
+            exe = self.find_emulator(&id)?.2;
+        }
+        if id == "retroarch" {
+            let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
+                id: id.clone(),
+                emulator: id.clone(),
+            })?;
+            let core = cl_adapters::default_core(game.system).ok_or_else(|| {
+                cl_adapters::AdapterError::Unsupported("No Libretro core for this system".into())
+            })?;
+            if cl_adapters::find_core(&exe, core).is_none() {
+                if self.config.emulator(&id).mode != EmulatorMode::Managed {
+                    return Err(cl_adapters::AdapterError::Unsupported(
+                        "Cette installation externe ne contient pas le cœur requis. Choisis Installer RetroArch dans les réglages pour utiliser le moteur interne.".into()).into());
+                }
+                cl_updater::retroarch::ensure_core(
+                    core,
+                    exe.parent().unwrap(),
+                    &self.paths.emulators_dir(),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     /// What a launch would do, without touching any file (for the interface).
     pub fn preview(&mut self, game: &Game) -> Result<(PreparedLaunch, GameTuning), EngineError> {
         let (adapter, _cfg, exe) = self.adapter_for_game(game)?;
@@ -1100,7 +1213,8 @@ impl Engine {
             emulator: adapter.name().into(),
         })?;
         let tuning = self.tuning(game, adapter.as_ref());
-        let ladder = adapter.quality_ladder(game.system);
+        let mut ladder = adapter.quality_ladder(game.system);
+        ladder.truncate(tuning.state.max + 1);
         let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
         let (measure, mut notes) = self.measure_decision(&tuning);
         let lang = self.config.language.clone();
@@ -1173,8 +1287,24 @@ impl Engine {
             emulator: adapter.name().into(),
         })?;
         let tuning = self.tuning(game, adapter.as_ref());
-        let ladder = adapter.quality_ladder(game.system);
-        let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
+        let mut ladder = adapter.quality_ladder(game.system);
+        ladder.truncate(tuning.state.max + 1);
+        let mut step = ladder[tuning.state.current.min(ladder.len() - 1)].clone();
+        step.settings.extend(cl_adapters::experience::settings(
+            adapter.id(),
+            self.config.perf.experience,
+        ));
+        if adapter.id() == "dolphin" {
+            let budget = cl_perf::estimate::dolphin_budget(&self.hw_summary(), game.system);
+            step.settings.insert(
+                "GFX.Settings.ShaderCompilationMode".into(),
+                if budget.hybrid_shaders { "2" } else { "0" }.into(),
+            );
+            if let Some(buffer) = step.settings.get_mut("Dolphin.Core.AudioBufferSize") {
+                let requested = buffer.parse::<u32>().unwrap_or(80);
+                *buffer = requested.max(budget.minimum_audio_buffer_ms).to_string();
+            }
+        }
         let (measure, mut notes) = self.measure_decision(&tuning);
         let generated = self.paths.generated_dir();
 
@@ -1199,7 +1329,7 @@ impl Engine {
         let mut plan = adapter.prepare(&LaunchContext {
             exe: &exe,
             game,
-            step,
+            step: &step,
             api: tuning.api,
             mode: cfg.mode,
             generated_dir: &generated,
@@ -1211,14 +1341,35 @@ impl Engine {
                 game.system
             )),
         })?;
+        if adapter.id() == "retroarch" && cfg.mode == EmulatorMode::Managed {
+            // Append user-visible image/resume choices to this session only.
+            let file = generated.join("retroarch").join(format!("{}.cfg", game.id));
+            let text = std::fs::read_to_string(&file).map_err(cl_adapters::AdapterError::from)?;
+            let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
+            for (key, value) in [
+                ("video_smooth", self.config.retroarch.smooth_image),
+                ("savestate_auto_save", self.config.retroarch.resume),
+                ("savestate_auto_load", self.config.retroarch.resume),
+            ] {
+                if !locked.iter().any(|k| k == key) {
+                    lines
+                        .retain(|line| !line.split_once('=').is_some_and(|(k, _)| k.trim() == key));
+                    lines.push(format!("{key} = \"{value}\""));
+                }
+            }
+            std::fs::write(file, lines.join("\n") + "\n")
+                .map_err(cl_adapters::AdapterError::from)?;
+            notes.push("F1 : menu en jeu, F2 : sauvegarde instantanée, F4 : chargement instantané, Échap : quitter proprement. La reprise instantanée reste dépendante du cœur et de sa version.".into());
+        }
         // The INI ledger may also have noticed a value changed by hand.
         for k in &plan.settings_report.kept_user_value {
             if !cfg.locked_keys.contains(k) {
                 watch.user_changed.insert(k.clone());
             }
         }
-        if let Some(after) = adapter.current_values(&exe, cfg.mode, &generated) {
-            watch.record(&after, &keys);
+        let after_values = adapter.current_values(&exe, cfg.mode, &generated);
+        if let Some(after) = &after_values {
+            watch.record(after, &keys);
         }
         if let Err(e) = watch.save(&watch_file) {
             log::warn!("cannot save {}: {e}", watch_file.display());
@@ -1234,6 +1385,13 @@ impl Engine {
             }
         }
         notes.extend(plan.notes.iter().cloned());
+        plan.diagnostics = serde_json::json!({
+            "game": game.title, "gameId": game.id, "system": game.system,
+            "profile": step.label, "api": tuning.api, "priority": self.config.perf.experience.key(),
+            "hardware": self.hardware(false), "settings": step.settings,
+            "kept": plan.settings_report.kept_user_value, "notes": notes,
+            "keptValues": after_values,
+        });
         Ok((
             PreparedLaunch {
                 game: game.clone(),
@@ -1318,14 +1476,18 @@ impl Engine {
 
         let mut stats = None;
         let mut result_verdict = None;
+        let known_rate = known_output_rate(game, &prepared.emulator);
         if let Some(file) = &session.capture_file {
-            match parse_file(file)
+            match parse_file(file).map_err(|e| e.to_string()).and_then(|ft| {
+                match known_rate {
+                    Some(rate) => analyse_with_target(&ft, rate),
+                    None => analyse(&ft),
+                }
                 .map_err(|e| e.to_string())
-                .and_then(|ft| analyse(&ft).map_err(|e| e.to_string()))
-            {
+            }) {
                 Ok(s) => {
                     let v = verdict(&s);
-                    if session_can_update_tuning {
+                    if session_can_update_tuning && known_rate.is_some() {
                         tuning.push_run(RunRecord {
                             at: now(),
                             step: prepared.step,
@@ -1333,9 +1495,9 @@ impl Engine {
                             verdict: v,
                         });
                     } else {
-                        notes.push(
-                            "Measurement shown but not used for tuning: emulator failed".into(),
-                        );
+                        notes.push(if !session_can_update_tuning {
+                            "Measurement shown but not used for tuning: emulator failed"
+                        } else { "Cadence native non confirmée : les FPS sont affichés mais ne modifient pas automatiquement la qualité." }.into());
                     }
                     stats = Some(s);
                     result_verdict = Some(v);
@@ -1500,11 +1662,11 @@ mod tests {
         assert_eq!(p.step_label, "1440p");
         assert!(!p.measure);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-4"));
         assert!(p
             .plan
             .args
-            .contains(&"--config=GFX.Settings.ShaderCompilationMode=2".into()));
+            .contains(&"--config=Graphics.Settings.ShaderCompilationMode=2".into()));
         assert!(!p.plan.args.iter().any(|arg| arg.contains("CPUThread")));
 
         let t = engine.set_step(&games[0], 1).unwrap();
@@ -1544,7 +1706,7 @@ mod tests {
         let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
         assert_eq!(tuning.state.current, 3);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-4"));
     }
 
     #[test]
@@ -1589,6 +1751,77 @@ mod tests {
             engine.prepare(&g),
             Err(EngineError::EmulatorMissing { .. })
         ));
+    }
+
+    #[test]
+    fn managed_retroarch_options_replace_defaults_without_duplicate_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        let runtime = dir.path().join("runtime").join(exe("retroarch"));
+        touch(&runtime);
+        let suffix = if cfg!(windows) { "dll" } else { "so" };
+        touch(
+            &runtime
+                .parent()
+                .unwrap()
+                .join("cores")
+                .join(format!("snes9x_libretro.{suffix}")),
+        );
+        let rom = dir.path().join("game.sfc");
+        touch(&rom);
+        engine.add_game(rom, SystemId::Snes).unwrap();
+        engine.config.emulators.insert(
+            "retroarch".into(),
+            EmulatorConfig {
+                path: Some(runtime),
+                mode: EmulatorMode::Managed,
+                ..Default::default()
+            },
+        );
+        engine.config.retroarch.smooth_image = true;
+        engine.config.retroarch.resume = true;
+        engine.config.perf.auto_tune = false;
+        let game = engine.games().remove(0);
+        engine.ensure_game_ready(&game).unwrap(); // installed core: no network
+        engine.prepare(&game).unwrap();
+        let text = std::fs::read_to_string(
+            engine
+                .paths
+                .generated_dir()
+                .join("retroarch")
+                .join(format!("{}.cfg", game.id)),
+        )
+        .unwrap();
+        for key in ["video_smooth", "savestate_auto_save", "savestate_auto_load"] {
+            let entries: Vec<_> = text
+                .lines()
+                .filter(|l| l.starts_with(&format!("{key} =")))
+                .collect();
+            assert_eq!(entries, vec![format!("{key} = \"true\"")]);
+        }
+    }
+
+    #[test]
+    fn missing_playstation_bios_is_reported_before_installation() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine_with_fake_hw(dir.path());
+        engine
+            .config
+            .system_emulator
+            .insert(SystemId::Psx, "retroarch".into());
+        let game = Game {
+            id: "x".into(),
+            system: SystemId::Psx,
+            title: "PSX".into(),
+            path: "x.cue".into(),
+            cover: None,
+            favorite: false,
+            identity: Default::default(),
+            metadata: None,
+        };
+        let error = engine.ensure_game_ready(&game).unwrap_err().to_string();
+        assert!(error.contains("scph5501.bin"));
+        assert!(!engine.paths.emulators_dir().exists());
     }
 
     fn touch(p: &std::path::Path) {

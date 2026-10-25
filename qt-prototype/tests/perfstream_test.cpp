@@ -20,9 +20,29 @@ int main(int argc, char **argv) {
     check(measured.value("measured").toBool(), "enough data");
     check(std::abs(measured.value("fps").toDouble() - 60) < 0.01, "dominant swapchain only, expected PID only");
     check(measured.value("frames").toInt() == 120, "does not sum separate rendering surfaces");
+    check(measured.value("timeline").toList().size() == 120, "bounded graph keeps chronological samples");
+    check(!measured.contains("gpuActiveMs"), "missing GPU work is not reported as zero");
     check(!stream.snapshot(4000).value("measured").toBool(), "old values expire");
     stream.clear();
+    // Actual PresentMon 2.6.0 v1 header spelling (lowercase `ms`), including
+    // optional GPU/display columns. The live reader used to reject it all.
+    stream.ingest("Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,msInPresentAPI,msBetweenPresents,msGPUActive,msUntilRenderComplete,msUntilDisplayed", 0, 42);
+    for (int i=0; i<120; ++i)
+        stream.ingest("Dolphin.exe,42,0x1,DXGI,1,0,0,1.0,0.1,16.666667,4,5,8", i*16, 42);
+    const auto actualHeader = stream.snapshot(1950);
+    check(actualHeader.value("measured").toBool(), "actual PresentMon v1 casing is recognized");
+    check(std::abs(actualHeader.value("fps").toDouble()-60) < 0.01, "real header produces FPS");
+    check(actualHeader.value("gpuActiveMs").toDouble() == 4, "real optional GPU header recognized");
+    check(actualHeader.value("displayDelayMs").toDouble() == 8, "real optional display header recognized");
+    stream.clear();
     check(!stream.snapshot(0).value("measured").toBool(), "new session starts empty");
+    stream.ingest("Application,ProcessID,SwapChainAddress,MsBetweenPresents,MsGPUActive,MsUntilDisplayed,Dropped", 0, 42);
+    for (int i=0; i<30; ++i) stream.ingest("game,42,0x1,33.333333,4,8,1", i*33, 42);
+    const auto slowNative = stream.snapshot(1000);
+    check(std::abs(slowNative.value("fps").toDouble()-30) < 0.01, "native 30 FPS stays 30, never inferred as emulation speed");
+    check(slowNative.value("gpuActiveMs").toDouble() == 4, "GPU work parsed separately from frame time");
+    check(slowNative.value("droppedPercent").toDouble() == 100, "dropped presentations exposed");
+    stream.clear();
     stream.ingest("Application,ProcessID,SwapChainAddress,MsBetweenPresents", 0, 42);
     for (const auto &bad : {"nan", "inf", "-1", "0", "oops", "10001"})
         stream.ingest(QByteArray("game,42,0x1,") + bad, 0, 42);

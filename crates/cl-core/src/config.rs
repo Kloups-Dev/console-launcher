@@ -85,6 +85,7 @@ pub struct ImportedGame {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerfConfig {
+    pub experience: ExperienceMode,
     /// Automatic optimisation on/off.
     pub auto_tune: bool,
     /// System-level optimisations applied to every emulator: higher process
@@ -101,11 +102,39 @@ pub struct PerfConfig {
 impl Default for PerfConfig {
     fn default() -> Self {
         PerfConfig {
+            experience: ExperienceMode::Balanced,
             auto_tune: true,
             system_tweaks: true,
             capture_seconds: 60,
             capture_delay_seconds: 20,
             presentmon_path: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperienceMode {
+    Responsive,
+    #[default]
+    Balanced,
+    Quality,
+}
+
+impl ExperienceMode {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Responsive => "responsive",
+            Self::Balanced => "balanced",
+            Self::Quality => "quality",
+        }
+    }
+    /// Ceiling for standard native/2x/3x/4x/6x resolution ladders.
+    pub fn resolution_ceiling(self) -> usize {
+        match self {
+            Self::Responsive => 2,
+            Self::Balanced => 3,
+            Self::Quality => usize::MAX,
         }
     }
 }
@@ -140,6 +169,16 @@ pub struct AppConfig {
     /// paths and values are validated strings passed only for the session.
     pub emulator_mappings: BTreeMap<String, BTreeMap<String, String>>,
     pub perf: PerfConfig,
+    pub retroarch: RetroArchConfig,
+}
+
+/// User-facing choices; conservative audio/video defaults stay in the adapter.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetroArchConfig {
+    pub smooth_image: bool,
+    /// Optional save-state resume. In-game saves are always independent.
+    pub resume: bool,
 }
 
 impl Default for AppConfig {
@@ -157,6 +196,7 @@ impl Default for AppConfig {
             controller_mappings: BTreeMap::new(),
             emulator_mappings: BTreeMap::new(),
             perf: PerfConfig::default(),
+            retroarch: RetroArchConfig::default(),
         }
     }
 }

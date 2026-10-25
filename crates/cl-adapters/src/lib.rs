@@ -21,6 +21,7 @@
 //! ([`profile`]) or added by the user as custom emulators.
 
 mod dolphin;
+pub mod experience;
 mod pcsx2;
 pub mod profile;
 mod retroarch;
@@ -36,6 +37,7 @@ pub use dolphin::Dolphin;
 pub use pcsx2::Pcsx2;
 pub use profile::{Profile, ProfileAdapter};
 pub use retroarch::RetroArch;
+pub use retroarch::{default_core, find_core};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AdapterError {
@@ -71,6 +73,8 @@ pub struct LaunchContext<'a> {
 /// The command to run and what was done to prepare it.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LaunchPlan {
+    /// Local diagnostics handed to the launcher's overlay, never to the emulator.
+    pub diagnostics: serde_json::Value,
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,

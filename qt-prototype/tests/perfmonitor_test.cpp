@@ -40,9 +40,11 @@ int main(int argc, char **argv) {
         if (foreground == GetCurrentProcessId()) {
             MSG message{}; message.message = WM_HOTKEY; message.wParam = 0x434c;
             monitor.nativeEventFilter("windows_generic_MSG", &message, nullptr);
-            if (!monitor.display()) { std::fprintf(stderr, "FAIL: shortcut did not show panel\n"); ++failed; }
+            if (!monitor.display() || monitor.viewMode() != 2) { std::fprintf(stderr, "FAIL: shortcut did not show detailed panel\n"); ++failed; }
             monitor.nativeEventFilter("windows_generic_MSG", &message, nullptr);
             if (monitor.display()) { std::fprintf(stderr, "FAIL: shortcut did not hide panel\n"); ++failed; }
+            monitor.nativeEventFilter("windows_generic_MSG", &message, nullptr);
+            if (!monitor.display() || monitor.viewMode() != 1) { std::fprintf(stderr, "FAIL: shortcut did not restore compact panel\n"); ++failed; }
         } else std::printf("Foreground shortcut check skipped: another window is active.\n");
 #endif
         monitor.setActive(false);

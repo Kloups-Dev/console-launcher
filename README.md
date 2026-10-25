@@ -49,6 +49,27 @@ The current Qt Quick application provides:
 - a controller tester with keyboard, mouse and SDL gamepad input, including
   per-player/system local profiles, dead-zone, sensitivity and axis inversion
   settings.
+- on Windows, launcher-managed RetroArch 1.22.2 and its curated matching core
+  pack: choosing **Launch** prepares missing components internally;
+- managed RetroArch save files and save states outside emulator version folders,
+  periodic save-RAM writes, synchronised audio/video and controller autodetection;
+- optional smooth image and save-state resume in General settings; advanced
+  RetroArch features remain available through its in-game menu (F1).
+
+This integration uses the official RetroArch runtime internally. It is not a
+new implementation of a native Libretro frontend. The launcher chooses the core
+and owns the normal setup flow; it does not duplicate RetroArch's advanced menu.
+Automatic runtime/core setup currently targets Windows x64. First setup downloads
+about 432 MB of archives and requires additional space for extraction. Downloads
+are pinned and hash-checked. Only the core needed by a game is activated.
+
+Game save files are written under `<data>/saves/retroarch/<system>/<game-id>/`;
+save states are separate under `<data>/states/retroarch/<core>/<game-id>/`.
+Save-state resume is opt-in and depends on core/version compatibility. Keep using
+in-game saves. External emulator installations keep their existing save paths.
+BIOS/firmware files must still be supplied by the user when required by a core.
+An installed core is not a promise that every game or enhancement works correctly;
+physical controller, real-game image and audio validation remains necessary.
 
 The launcher keeps its data local by default. It does not upload games,
 controller input, logs or performance captures automatically.
@@ -212,3 +233,49 @@ firmware, keys or circumvention tools. Users are responsible for complying
 with the laws and licences applicable to their games, firmware and emulators.
 
 The project's final licence has not been selected yet.
+
+## Audio/video priorities
+
+Settings > Picture and smoothness offers Responsiveness, Balanced (default),
+and Quality. Dolphin uses audio buffers of 24/40/80 ms and RetroArch targets
+32/48/64 ms. These are buffering settings, not measured end-to-end latency.
+Responsiveness disables VSync; Balanced/Quality enable it. Compatible 3D
+resolution ladders are capped at 1080p/1440p/unrestricted respectively.
+Dolphin keeps native speed and does not skip drawing; its shader cache and
+precompilation reduce shader interruptions. No universal game patches or
+forced FPS increases are applied. Manual emulator settings remain protected.
+Automatic quality learning requires a known output cadence (currently NTSC
+Dolphin and Game Boy-family RetroArch). Unknown/PAL switchable cadences keep
+metrics without learning from an assumed 50/60 Hz target. Changing priority
+or Dolphin policy invalidates old automatic measurements.
+
+Dolphin general presets also use the CPU estimate, GPU class/VRAM and RAM:
+shader compilation stays specialized on integrated/unknown/small GPUs;
+hybrid shaders are estimated suitable for dedicated GPUs with at least 4 GiB.
+A CPU margin below 1.25x the system estimate, or RAM below 8 GiB, keeps at
+least 80 ms of audio buffering. Stronger machines retain the selected priority.
+These thresholds are conservative starting heuristics, not calibrated GPU or
+audio benchmarks. CPU and graphics limits remain separate: a single combined
+score cannot safely select every setting. Game compatibility defaults and
+manual settings remain authoritative. Physical audio latency is not measured.
+
+## Live diagnostics (Windows)
+
+The launcher owns a click-through, non-focusable overlay above a windowed or
+borderless emulator. It starts compact in the top-right corner; F8 (configurable)
+cycles compact, full diagnostics and hidden. Ctrl+Alt+F8 is the fallback. It does
+not inject into an emulator and cannot guarantee display over exclusive fullscreen.
+PresentMon supplies presentation events for the launched PID; the launcher computes
+bounded rolling statistics and a 2-second frame-time chart. Presented FPS are not
+native/emulated FPS or proof of correct emulation speed. No keyboard input is logged.
+Windows provides CPU/RAM and, where available, GPU engine/dedicated memory counters.
+The optional installed NVIDIA NVML driver provides whole-card temperatures, clocks,
+power and VRAM. Cards are named and the source/scope is shown; missing readings stay
+unavailable rather than zero. No sensor driver or third-party overlay is installed.
+Audio glitches, physical input-to-display latency, CPU temperature and internal
+emulation speed are not measured. Present-to-display delay is not input latency.
+The full view includes the chosen profile, requested settings, protected manual
+settings and session notes. These are configuration context, not readback of every
+runtime override. Windows permission failures and unsupported sensors remain visible.
+Collection ends with the session and no telemetry is uploaded. Linux overlay is
+currently unavailable rather than advertising a shortcut without a working display.

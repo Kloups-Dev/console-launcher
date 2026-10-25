@@ -70,10 +70,13 @@ jobs:
           cargo build --release -p cl-ffi -p cl-cli
           if ($LASTEXITCODE) { exit 1 }
           cmake -S qt-prototype -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DCL_ENGINE_PREBUILT_DIR="$PWD/target/release" -DSDL2_DIR="$env:SDL2_ROOT/cmake" *>&1 | Tee-Object build.log
+            -DCL_ENGINE_PREBUILT_DIR="$PWD/target/release" -DSDL2_DIR="$env:SDL2_ROOT/cmake" -DCL_PERFORMANCE_TESTS=ON *>&1 | Tee-Object build.log
           if ($LASTEXITCODE) { $m = (Get-Content build.log -Tail 40) -join '%0A'; Write-Output "::error::$m"; exit 1 }
           cmake --build build *>&1 | Tee-Object build.log
           if ($LASTEXITCODE) { $m = (Select-String -Path build.log -Pattern 'error' | Select-Object -First 30 | ForEach-Object { $_.Line }) -join '%0A'; Write-Output "::error::$m"; exit 1 }
+          $env:PATH = "$env:QT_ROOT_DIR/bin;$env:PATH"
+          ctest --test-dir build --output-on-failure
+          if ($LASTEXITCODE) { exit 1 }
       - name: Collect files
         shell: bash
         run: |
@@ -93,23 +96,47 @@ jobs:
             "https://raw.githubusercontent.com/GameTechDev/PresentMon/v${PRESENTMON_VERSION}/LICENSE.txt"
           cp CHANGELOG.md docs/prototype/config.example.toml "$out/"
           echo "::notice title=Windows package::Qt $(qmake -query QT_VERSION), $(ls "$out/tools/presentmon" | tr '\n' ' '), $(du -sh "$out" | cut -f1)"
+      - name: Render overlay previews
+        shell: pwsh
+        run: |
+          $env:CONSOLE_LAUNCHER_HOME = "$env:RUNNER_TEMP/overlay-preview-home"
+          $env:QT_QUICK_BACKEND = "software"
+          foreach ($view in @('full','compact')) {
+            $arguments = @('--overlay-preview','--preview-output',"$PWD/overlay-$view.png")
+            if ($view -eq 'compact') { $arguments += '--compact-preview' }
+            $p = Start-Process -FilePath "$PWD/dist/ConsoleLauncher/console-launcher-qt.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+            if ($p.ExitCode -ne 0) { Get-Content dist/ConsoleLauncher/console-launcher.log -Tail 50; exit 1 }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: overlay-visual-previews
+          path: overlay-*.png
       # Starts the packaged launcher on the Windows runner: the interface must
       # load. The launcher's log is shown in the run summary either way.
       - name: Smoke test
         shell: pwsh
         run: |
           $dir = "dist/ConsoleLauncher"
+          # Hosted runners have no stable hardware graphics adapter.
+          $env:QT_QUICK_BACKEND = 'software'
           $env:CONSOLE_LAUNCHER_HOME = "$env:RUNNER_TEMP\cl-home"
           $p = Start-Process -FilePath "$dir/console-launcher-qt.exe" -ArgumentList "--smoke-test" -PassThru
           if (-not $p.WaitForExit(60000)) { $p.Kill(); $code = 2 } else { $code = $p.ExitCode }
           $log = if (Test-Path "$dir/console-launcher.log") { (Get-Content "$dir/console-launcher.log") -join '%0A' } else { "no log file" }
           if ($code -eq 0) { Write-Output "::notice title=Smoke test (Windows)::$log" }
-          else { Write-Output "::error title=Smoke test (Windows), exit $code::$log"; exit 1 }
+          else {
+            Write-Output "Smoke test exit code: $code"
+            Write-Output "::error title=Smoke test (Windows)::$log"
+            Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-3)} -ErrorAction SilentlyContinue | Select-Object -First 2 -ExpandProperty Message
+            exit 1
+          }
           Remove-Item "$dir/console-launcher.log", "$dir/console-launcher-engine.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: console-launcher-qt-windows-x64
           path: dist
+          overwrite: true
 
   linux:
     name: package (Linux AppImage)
@@ -136,8 +163,9 @@ jobs:
         run: |
           set -o pipefail
           report() { echo "::error::$(grep -iE "error|cannot|could not|not found" build.log | head -30 | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')"; exit 1; }
-          cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee build.log || report
+          cmake -S qt-prototype -B build -DCMAKE_BUILD_TYPE=Release -DCL_PERFORMANCE_TESTS=ON 2>&1 | tee build.log || report
           cmake --build build -j 2>&1 | tee build.log || report
+          ctest --test-dir build --output-on-failure
       - name: AppImage
         run: |
           set -eo pipefail
