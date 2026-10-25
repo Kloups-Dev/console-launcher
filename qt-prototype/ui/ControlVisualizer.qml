@@ -92,12 +92,14 @@ Item {
         targetState = out
     }
     function accept(event) {
+        if (!visible) return
+        // Escape must work regardless of the selected input device.
+        if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
+            close(); return
+        }
         if ((keyboard && event.source !== "keyboard")
             || (mouse && event.source !== "mouse")
             || (!keyboard && !mouse && event.source !== "controller")) return
-        if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
-            closeRequested(); return
-        }
         if (assignmentMode && Number(event.value) > 0) {
             const next = Object.assign({}, assignments)
             next[selectedTarget] = event.control
@@ -220,6 +222,11 @@ Item {
                 Label { text: root.keyboard ? "TESTEUR CLAVIER" : "TESTEUR MANETTE"; font.pixelSize: 22; font.bold: true; color: "black" }
                 Label { text: "Boutons, gâchettes et direction des sticks en direct"; color: "#555" }
             }
+            Button { text: "← Retour"; onClicked: root.close() }
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 8
             ComboBox {
                 id: device; currentIndex: 0; model: ["Clavier", "Souris", "Xbox", "PS5"]
                 onCurrentIndexChanged: root.reset()
@@ -229,7 +236,6 @@ Item {
             CheckBox { id: animations; text: "Animations"; checked: true }
             Button { text: "Sauvegarder"; onClicked: root.saveMapping() }
             Button { text: "Restaurer conseillé"; onClicked: root.restoreRecommended() }
-            Button { text: "Fermer"; onClicked: root.close() }
         }
 
         RowLayout {
@@ -406,7 +412,8 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Label { Layout.fillWidth: true; text: lastControl ? "Reçu : " + lastControl + "  " + lastValue.toFixed(2) : "Appuie sur une touche, un bouton ou bouge un joystick."; color: "black" }
-            Label { text: root.keyboard ? "Échap pour fermer" : "Utilise le bouton Fermer"; color: "#555" }
+            Label { text: "Échap ou Retour pour fermer"; color: "#555" }
         }
     }
 }
+
