@@ -69,9 +69,14 @@ Terminé lorsque :
 - fermer le testeur rend toujours la navigation normale au lanceur ;
 - aucun texte tapé ailleurs ni aucune entrée globale n'est enregistré.
 
-État : première visualisation en cours sur
-`feature/controller-visualizer`. La persistance et l'application aux
-émulateurs restent à développer.
+État : le visualiseur propose maintenant clavier, souris et manettes SDL,
+avec profils par joueur/système, zone morte, sensibilité et inversion. Les
+états visuels sont persistants et Dolphin accepte des overrides natifs
+validés pour une session. Le visualiseur permet aussi de choisir une commande,
+d'attendre une entrée puis de sauvegarder un binding clavier Dolphin, avec
+restauration du profil conseillé. Les bindings natifs des autres émulateurs,
+ainsi que les essais physiques Windows et dans les émulateurs réels, restent
+à terminer.
 
 ### P2 — Diagnostic en jeu et overlay discret
 

@@ -1,8 +1,6 @@
 //! Where official releases come from.
 //!
-//! Version 0.1 supports GitHub releases (used by PCSX2). Dolphin and
-//! RetroArch publish their builds on their own servers; their sources are
-//! listed as `Manual` until dedicated readers are written (see the roadmap).
+//! Official release sources used for launcher-managed downloads.
 
 use crate::UpdateError;
 use serde::{Deserialize, Serialize};
@@ -45,6 +43,46 @@ pub fn source_for(id: &str) -> Option<Source> {
             linux_words: &["linux", "x64"],
             windows_suffix: &[".7z", ".zip"],
             linux_suffix: &[".appimage"],
+        },
+        "mgba" => Source::GitHub {
+            owner: "mgba-emu",
+            repo: "mgba",
+            windows_words: &["windows", "x64"],
+            linux_words: &["linux", "x64"],
+            windows_suffix: &[".7z", ".zip"],
+            linux_suffix: &[".appimage"],
+        },
+        "duckstation" => Source::GitHub {
+            owner: "stenzek",
+            repo: "duckstation",
+            windows_words: &["windows", "x64"],
+            linux_words: &["linux", "x64"],
+            windows_suffix: &[".zip", ".7z"],
+            linux_suffix: &[".appimage"],
+        },
+        "ppsspp" => Source::GitHub {
+            owner: "hrydgard",
+            repo: "ppsspp",
+            windows_words: &["windows", "amd64"],
+            linux_words: &["linux", "x86_64"],
+            windows_suffix: &[".zip", ".7z"],
+            linux_suffix: &[".tar.gz", ".zip"],
+        },
+        "melonds" => Source::GitHub {
+            owner: "melonDS-emu",
+            repo: "melonDS",
+            windows_words: &["windows"],
+            linux_words: &["linux"],
+            windows_suffix: &[".zip", ".7z"],
+            linux_suffix: &[".appimage", ".tar.gz"],
+        },
+        "cemu" => Source::GitHub {
+            owner: "CemuProject",
+            repo: "Cemu",
+            windows_words: &["windows", "x64"],
+            linux_words: &["linux", "x64"],
+            windows_suffix: &[".zip", ".7z"],
+            linux_suffix: &[".appimage", ".tar.gz"],
         },
         "dolphin" if cfg!(windows) => Source::Pinned {
             version: "2609a",
@@ -251,5 +289,19 @@ mod tests {
         } else {
             assert!(matches!(source, Source::Manual { .. }));
         }
+    }
+
+    #[test]
+    fn supported_emulators_have_direct_official_sources() {
+        for id in ["pcsx2", "mgba", "duckstation", "ppsspp", "melonds", "cemu"] {
+            assert!(
+                matches!(source_for(id), Some(Source::GitHub { .. })),
+                "{id} should expose an official release source"
+            );
+        }
+        assert!(matches!(
+            source_for("retroarch"),
+            Some(Source::Manual { .. })
+        ));
     }
 }

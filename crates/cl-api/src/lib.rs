@@ -13,6 +13,7 @@ use cl_engine::{Engine, EngineError};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -314,6 +315,40 @@ fn dispatch(
             engine.save_config().map_err(loc).map(|_| Value::Null)
         }
 
+        "save_control_mapping" => {
+            let key: String = arg(p, "key")?;
+            let mapping: BTreeMap<String, f64> = arg(p, "mapping")?;
+            engine.config.controller_mappings.insert(key, mapping);
+            engine.save_config().map_err(loc).map(|_| Value::Null)
+        }
+
+        "get_control_mapping" => {
+            let key: String = arg(p, "key")?;
+            Ok(json!(engine
+                .config
+                .controller_mappings
+                .get(&key)
+                .cloned()
+                .unwrap_or_default()))
+        }
+
+        "save_emulator_mapping" => {
+            let key: String = arg(p, "key")?;
+            let mapping: BTreeMap<String, String> = arg(p, "mapping")?;
+            engine.config.emulator_mappings.insert(key, mapping);
+            engine.save_config().map_err(loc).map(|_| Value::Null)
+        }
+
+        "get_emulator_mapping" => {
+            let key: String = arg(p, "key")?;
+            Ok(json!(engine
+                .config
+                .emulator_mappings
+                .get(&key)
+                .cloned()
+                .unwrap_or_default()))
+        }
+
         "allow_capture" => cl_session::request_capture_permission().map(|_| Value::Null),
 
         "hardware" => {
@@ -373,6 +408,28 @@ mod tests {
         assert_eq!(s["config"]["perf"]["system_tweaks"], false);
         assert_eq!(s["systems"].as_array().unwrap().len(), SystemId::ALL.len());
         assert!(s["emulators"].as_array().unwrap().len() >= 8);
+        api.call(
+            "save_control_mapping",
+            &json!({"key": "keyboard:gamecube", "mapping": {"a": 1.0, "leftx": -1.0}}),
+        )
+        .unwrap();
+        let mapping = api
+            .call("get_control_mapping", &json!({"key": "keyboard:gamecube"}))
+            .unwrap();
+        assert_eq!(mapping["a"], 1.0);
+        assert_eq!(mapping["leftx"], -1.0);
+        api.call(
+            "save_emulator_mapping",
+            &json!({
+                "key": "dolphin:gamecube",
+                "mapping": {"GCPad1/Buttons/A": "Keyboard/Space"}
+            }),
+        )
+        .unwrap();
+        let native_mapping = api
+            .call("get_emulator_mapping", &json!({"key": "dolphin:gamecube"}))
+            .unwrap();
+        assert_eq!(native_mapping["GCPad1/Buttons/A"], "Keyboard/Space");
         let retroarch = s["emulators"]
             .as_array()
             .unwrap()

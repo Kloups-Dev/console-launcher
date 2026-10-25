@@ -325,6 +325,7 @@ version = "0.3.2"
 dependencies = [
  "cl-adapters",
  "cl-core",
+ "cl-perf",
  "log",
  "serde",
  "serde_json",

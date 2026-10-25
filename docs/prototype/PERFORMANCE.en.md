@@ -36,6 +36,10 @@ During a measurement, the emulator presents every console refresh (Dolphin gets 
 
 On Windows, PresentMon targets only the process ID started by the launcher. It does not track keyboard or mouse input. If no CSV is produced, its short local log is included in the session report so the failure is explainable instead of silent.
 
+The overlay also displays the emulator process's CPU usage and resident
+memory. These values are sampled locally and do not represent emulation speed,
+audio state, GPU usage or temperature.
+
 These thresholds are **starting values**. They will be confirmed or corrected after the first tests.
 
 ## Respecting users' settings

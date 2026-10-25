@@ -46,6 +46,9 @@ The current Qt Quick application provides:
   existing manual choices are not silently overwritten;
 - local logs and optional frame-time measurement through PresentMon on Windows
   or MangoHud on Linux.
+- a controller tester with keyboard, mouse and SDL gamepad input, including
+  per-player/system local profiles, dead-zone, sensitivity and axis inversion
+  settings.
 
 The launcher keeps its data local by default. It does not upload games,
 controller input, logs or performance captures automatically.
@@ -116,6 +119,14 @@ cmake -S qt-prototype -B build-qt -DCMAKE_BUILD_TYPE=Release
 cmake --build build-qt
 ./build-qt/console-launcher-qt
 ```
+
+On Windows, after downloading the source ZIP from **Code → Download ZIP**,
+extract it completely and run `compile.bat` from the repository root. The
+script detects common Qt 6.8 and SDL2 installations, configures CMake and
+builds the application. Run `compile.bat test` to build it and execute the
+interface smoke test. Qt 6.8, CMake, Rust/Cargo, a C++17 compiler and the
+SDL2 development archive are still required; the script does not download
+these toolchains.
 
 The Qt build invokes Cargo for the Rust engine unless an already-built engine
 is supplied with `CL_ENGINE_PREBUILT_DIR`.

@@ -320,6 +320,7 @@ mod tests {
                 generated_dir: &gen,
                 locked_keys: &locked,
                 bios_dir: None,
+                controller_overrides: None,
             })
             .unwrap();
         assert_eq!(plan.args[0], "-L");

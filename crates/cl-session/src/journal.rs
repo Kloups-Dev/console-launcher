@@ -1,5 +1,6 @@
 //! Bounded local records describing emulator sessions.
 
+use cl_perf::frametime::FrameStats;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -25,6 +26,7 @@ pub struct SessionRecord {
     pub exit_code: Option<i32>,
     pub played_seconds: Option<u64>,
     pub verdict: Option<String>,
+    pub frame_stats: Option<FrameStats>,
     pub error: Option<String>,
 }
 

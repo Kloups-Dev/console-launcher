@@ -17,7 +17,26 @@ Comment le lanceur trouve les émulateurs, lesquels il optimise, comment il resp
 | melonDS | Nintendo DS | Optimisations système seulement | — |
 | Cemu | Wii U | Optimisations système seulement | — |
 
-Le lanceur ne fournit jamais d'émulateur, de BIOS, de firmware ni de clé. Les émulateurs viennent de leurs sources officielles, ou sont déjà installés par l'utilisateur.
+Le lanceur ne fournit jamais de BIOS, de firmware ni de clé. Pour PCSX2,
+mGBA, DuckStation, PPSSPP, melonDS et Cemu, le bouton **Installer
+directement** télécharge et vérifie l'archive depuis la publication officielle
+du projet, puis l'active dans le dossier local du lanceur. Dolphin est géré
+directement sous Windows avec une version vérifiée. RetroArch reste manuel :
+ses cores et leurs licences doivent être choisis dans RetroArch.
+Les émulateurs viennent toujours de leurs sources officielles ou sont déjà
+installés par l'utilisateur.
+
+Les correspondances natives Dolphin peuvent être conservées séparément des
+états du visualiseur, sous une clé comme `dolphin:gamecube`. Elles utilisent
+les clés Dolphin (`GCPad...` ou `Wiimote...`) et sont passées avec
+`--config` pour la session ; les fichiers de configuration de l'utilisateur
+ne sont pas réécrits silencieusement.
+
+Dans le visualiseur, le mode **Affecter** permet de choisir une commande
+GameCube puis d'appuyer sur une touche du clavier. Cette affectation est
+enregistrée dans le profil Dolphin de session. Les axes, la souris et les
+autres émulateurs restent affichés et persistants comme profils visuels, mais
+ne sont pas encore convertis automatiquement en syntaxe native.
 
 ## Trouver les émulateurs
 

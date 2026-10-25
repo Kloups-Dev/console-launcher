@@ -64,6 +64,8 @@ pub struct LaunchContext<'a> {
     pub locked_keys: &'a [String],
     /// Folder of BIOS/firmware files provided by the user, if any.
     pub bios_dir: Option<&'a Path>,
+    /// Optional emulator-native controller overrides for this system.
+    pub controller_overrides: Option<&'a BTreeMap<String, String>>,
 }
 
 /// The command to run and what was done to prepare it.

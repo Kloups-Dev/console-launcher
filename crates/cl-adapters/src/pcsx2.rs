@@ -195,6 +195,7 @@ mod tests {
             generated_dir: &gen,
             locked_keys: &[],
             bios_dir: None,
+            controller_overrides: None,
         };
         let plan = Pcsx2.prepare(&ctx(&ladder[2])).unwrap();
         assert!(root.join("portable.txt").exists());
@@ -243,6 +244,7 @@ mod tests {
                 generated_dir: &gen,
                 locked_keys: &[],
                 bios_dir: None,
+                controller_overrides: None,
             })
             .unwrap();
         assert!(plan.notes.is_empty());

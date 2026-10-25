@@ -13,6 +13,8 @@
 #define NOMINMAX
 #include <windows.h>
 #include <psapi.h>
+#elif defined(Q_OS_LINUX)
+#include <unistd.h>
 #endif
 
 namespace { constexpr int HotkeyId = 0x434c; }
@@ -52,7 +54,7 @@ PerfMonitor::~PerfMonitor() {
 }
 
 bool PerfMonitor::supported() const {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
     return true;
 #else
     return false;
@@ -197,14 +199,53 @@ void PerfMonitor::sampleProcess() {
         const quint64 cpu = ticks(kernel) + ticks(user);
         const qint64 now = m_clock.elapsed();
         if (m_previousWall && now > m_previousWall && cpu >= m_previousCpu)
-            m_metrics["cpu"] = (cpu - m_previousCpu) / double(now - m_previousWall) / 100.0
-                / qMax(1, QThread::idealThreadCount());
+            // FILETIME uses 100 ns units; expose process CPU as a percentage
+            // of one logical CPU (a multi-threaded process may exceed 100%).
+            m_metrics["cpu"] = (cpu - m_previousCpu) / 10000.0
+                / double(now - m_previousWall) * 100.0;
         m_previousCpu = cpu; m_previousWall = now;
     }
     PROCESS_MEMORY_COUNTERS memory{};
     memory.cb = sizeof(memory);
     if (GetProcessMemoryInfo(process, &memory, sizeof(memory)))
         m_metrics["ramMb"] = memory.WorkingSetSize / 1048576.0;
+#elif defined(Q_OS_LINUX)
+    QFile statFile(QStringLiteral("/proc/%1/stat").arg(m_pid));
+    if (!statFile.open(QIODevice::ReadOnly))
+        return;
+    const QByteArray raw = statFile.readAll().trimmed();
+    const qsizetype commEnd = raw.lastIndexOf(')');
+    if (commEnd < 0 || commEnd + 2 >= raw.size())
+        return;
+    const QList<QByteArray> fields = raw.mid(commEnd + 2).split(' ');
+    if (fields.size() < 17)
+        return;
+    bool ok = false;
+    const quint64 utime = fields[11].toULongLong(&ok);
+    const quint64 stime = fields[12].toULongLong(&ok);
+    if (!ok)
+        return;
+    const quint64 cpu = utime + stime;
+    const qint64 now = m_clock.elapsed();
+    const long ticksPerSecond = sysconf(_SC_CLK_TCK);
+    if (ticksPerSecond > 0 && m_previousWall && now > m_previousWall && cpu >= m_previousCpu)
+        m_metrics["cpu"] = (cpu - m_previousCpu) * 1000000.0
+            / ticksPerSecond / double(now - m_previousWall);
+    m_previousCpu = cpu;
+    m_previousWall = now;
+
+    QFile status(QStringLiteral("/proc/%1/status").arg(m_pid));
+    if (status.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> lines = status.readAll().split('\n');
+        for (const QByteArray &line : lines) {
+            if (!line.startsWith("VmRSS:"))
+                continue;
+            const QList<QByteArray> parts = line.simplified().split(' ');
+            if (parts.size() >= 2)
+                m_metrics["ramMb"] = parts[1].toDouble() / 1024.0;
+            break;
+        }
+    }
 #endif
 }
 

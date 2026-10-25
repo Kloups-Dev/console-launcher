@@ -21,8 +21,8 @@ L'interface est écrite en C++ / Qt Quick (Qt 6.8 LTS). Le moteur est écrit en 
 | Écran de réglages complet, utilisable à la manette : consoles, émulateurs, dossiers, mesure de fluidité | ✅ Testé sous Linux (écran virtuel) |
 | Détection de la machine (CPU, RAM, GPU via Vulkan) et test CPU « simulation » | ✅ |
 | Réglage de départ estimé, puis mesure réelle et ajustement automatique par jeu | ✅ Logique testée ; **seuils à calibrer** sur de vraies machines |
-| Mesure en conditions réelles, outil fourni avec le lanceur : PresentMon (Windows), MangoHud (Linux) | ⚠️ Intégré, pas encore vérifié sur une vraie partie |
-| Installation et mises à jour des émulateurs : version affichée, vérification du téléchargement, épinglage, retour arrière | ✅ Dolphin 2609a directement sous Windows ; PCSX2 depuis GitHub. RetroArch reste manuel pour l'instant |
+| Mesure en conditions réelles, outil fourni avec le lanceur : PresentMon (Windows), MangoHud (Linux) | ⚠️ Capture intégrée ; l'overlay affiche maintenant les ressources du processus sous Windows et Linux, mais aucune validation sur une vraie partie n'est encore faite |
+| Installation et mises à jour des émulateurs : version affichée, vérification du téléchargement, épinglage, retour arrière | ✅ téléchargement direct depuis les publications officielles pour PCSX2, mGBA, DuckStation, PPSSPP, melonDS et Cemu ; Dolphin sous Windows ; RetroArch reste manuel |
 | Les réglages modifiés à la main dans un émulateur ne sont plus touchés, avec un bouton pour les rendre au lanceur | ✅ Fichiers d'origine sauvegardés avant la première modification ([EMULATORS.fr.md](EMULATORS.fr.md)) |
 | Optimisations système pour tous les émulateurs (priorité, GPU hautes performances sous Windows) | ✅ Pas encore vérifiées sous Windows |
 
