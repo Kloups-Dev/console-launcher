@@ -127,7 +127,7 @@ Item {
                                      if (!ok) console.warn("mapping save failed:", result)
                                  })
         if (system === "gamecube" && keyboard) {
-            const native = {}
+            const nativeMapping = {}
             const paths = {
                 "face-bottom": "GCPad1/Buttons/A", "face-right": "GCPad1/Buttons/B",
                 "face-left": "GCPad1/Buttons/X", "face-top": "GCPad1/Buttons/Y",
@@ -144,10 +144,10 @@ Item {
                 const path = paths[target]
                 const source = assignments[target]
                 if (path && source)
-                    native[path] = "Keyboard/" + (names[source] || source.toUpperCase())
+                    nativeMapping[path] = "Keyboard/" + (names[source] || source.toUpperCase())
             }
             Launcher.internalRequest("save_emulator_mapping",
-                                     {key: "dolphin:gamecube", mapping: native},
+                                     {key: "dolphin:gamecube", mapping: nativeMapping},
                                      function(ok, result) {
                                          if (!ok) console.warn("Dolphin mapping save failed:", result)
                                      })
