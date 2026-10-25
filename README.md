@@ -126,7 +126,8 @@ script detects common Qt 6.8 and SDL2 installations, configures CMake and
 builds the application. Run `compile.bat test` to build it and execute the
 interface smoke test. Qt 6.8, CMake, Rust/Cargo, a C++17 compiler and the
 SDL2 development archive are still required; the script does not download
-these toolchains.
+these toolchains. If compilation fails, the script displays the failing step
+and keeps the command window open so the error can be copied.
 
 The Qt build invokes Cargo for the Rust engine unless an already-built engine
 is supplied with `CL_ENGINE_PREBUILT_DIR`.
