@@ -33,6 +33,7 @@ Item {
     property var confirmRemove: null
     property string pendingGamePath: ""
     property bool busy: false
+    property bool controlTesterOpen: false
 
     readonly property bool fr: Launcher.language.indexOf("fr") === 0
     function t(f, e) { return fr ? f : e; }
@@ -162,6 +163,10 @@ Item {
             title: t("Contrôles", "Controls"),
             items: [
                 block(t("Périphérique actif", "Active device"), device),
+                row(t("Tester et visualiser les contrôles", "Test and visualise controls"), "›", function () {
+                    controlTesterOpen = true;
+                    Launcher.controlCapture = true;
+                }),
                 block(t("Navigation dans le launcher", "Launcher navigation"), t(
                     "Déplacement : flèches ou croix directionnelle<br>Valider : Entrée ou A<br>Retour : Échap ou B<br>Réglages : Tab ou Start<br>Favori : F ou Y<br>Plein écran : F11",
                     "Move: arrow keys or D-pad<br>Confirm: Enter or A<br>Back: Escape or B<br>Settings: Tab or Start<br>Favourite: F or Y<br>Fullscreen: F11")),
@@ -183,7 +188,18 @@ Item {
                 block(t("Réglages automatiques", "Automatic settings"), t(
                     "Ces options servent de base à toutes les consoles. Les adaptations précises restent liées au jeu et à son émulateur.",
                     "These options are the base for every console. Precise adaptations remain tied to each game and emulator.")),
-                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
+                row(t("Panneau de diagnostic en jeu", "In-game diagnostics panel"), onOff(Launcher.performance.enabled), function () {
+                    Launcher.performance.enabled = !Launcher.performance.enabled; render();
+                }),
+                row(t("Touche du panneau", "Panel shortcut"), "F" + Launcher.performance.functionKey, function () {
+                    Launcher.performance.functionKey = Launcher.performance.functionKey % 11 + 1; render();
+                }, {
+                    left: function () { Launcher.performance.functionKey = (Launcher.performance.functionKey + 9) % 11 + 1; render(); },
+                    right: function () { Launcher.performance.functionKey = Launcher.performance.functionKey % 11 + 1; render(); }
+                }),
+                block(t("Diagnostic en jeu", "In-game diagnostics"), t(
+                    "Windows : la touche choisie affiche ou masque les mesures au-dessus du jeu en mode fenêtré/sans bordure. Les FPS présentés ne sont pas une mesure de vitesse d'émulation. Le son n'est pas encore mesuré.",
+                    "Windows: the selected key toggles measurements over windowed/borderless games. Presented FPS do not measure emulation speed. Audio is not measured yet.")),                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
                 row(t("Optimisations système (priorité, GPU)", "System optimisations (priority, GPU)"), onOff(c.perf.system_tweaks), () => prefs({ systemTweaks: !c.perf.system_tweaks })),
                 row(t("Mesure de fluidité", "Smoothness check"), ov.capture.available ? yes : no, () => push("capture")),
                 block(t("Machine détectée", "Detected hardware"), hw ? esc(hw.cpu.brand + " · " + hw.ram_mb + " MB · " + gpu + " · score " + (hw.bench ? hw.bench.score : "?")) : "—"),
@@ -618,6 +634,8 @@ Item {
         });
     }
     function close() {
+        controlTesterOpen = false;
+        Launcher.controlCapture = false;
         Launcher.settingsOpen = false;
         stack = [];
         toast = "";
@@ -753,6 +771,16 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    ControlVisualizer {
+        anchors.fill: parent
+        visible: root.controlTesterOpen
+        z: 20
+        onCloseRequested: {
+            root.controlTesterOpen = false
+            Launcher.controlCapture = false
         }
     }
 }

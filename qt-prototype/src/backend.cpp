@@ -11,6 +11,7 @@
 #include <QUrl>
 
 Backend::Backend(QObject *parent) : QObject(parent) {
+    connect(this, &Backend::sessionActive, &m_performance, &PerfMonitor::setActive);
     // Settings are read once, synchronously, before the interface is loaded.
     const Engine::Answer a = m_engine.call("config");
     if (a.ok)
@@ -20,6 +21,7 @@ Backend::Backend(QObject *parent) : QObject(parent) {
 }
 
 void Backend::applyConfig(const QVariantMap &config) {
+    m_performance.configure(config.value("perf").toMap());
     const QString lang = config.value("language").toString();
     if (!lang.isEmpty() && lang != m_language) {
         m_language = lang;
@@ -39,7 +41,15 @@ void Backend::loadInterface() {
     if (!m_qml)
         return;
     m_settingsOpen = false;
+    qInfo("loading desktop component");
     m_qml->loadFromModule("ConsoleLauncher", "DesktopApp");
+    qInfo("desktop component returned");
+    if (!m_qml->rootObjects().isEmpty() && m_performance.supported()) {
+        qInfo("loading performance component");
+        m_qml->loadFromModule("ConsoleLauncher", "PerformanceOverlay");
+        qInfo("performance component returned");
+    }
+
     if (m_qml->rootObjects().isEmpty())
         setError(tr("The built-in interface could not be loaded"));
 }
@@ -219,12 +229,24 @@ void Backend::toggleFullscreen() {
 void Backend::quit() { QCoreApplication::quit(); }
 
 void Backend::emitNav(const QString &action) {
-    if (m_running)
+    if (m_running || m_controlCapture)
         return;
     if (m_settingsOpen)
         Q_EMIT settingsNav(action);
     else
         Q_EMIT nav(action);
+}
+
+void Backend::setControlCapture(bool capture) {
+    if (capture == m_controlCapture)
+        return;
+    m_controlCapture = capture;
+    Q_EMIT controlCaptureChanged();
+}
+
+void Backend::emitControlInput(const QVariantMap &event) {
+    if (!m_running && m_controlCapture)
+        Q_EMIT controlInput(event);
 }
 
 void Backend::setPadName(const QString &name) {

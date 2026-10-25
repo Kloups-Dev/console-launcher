@@ -449,6 +449,40 @@ fn presentmon_diagnostic(path: &Path) -> Option<String> {
     Some(clean)
 }
 
+// Private, short-lived session handoff to the native performance panel.
+// No key input, game contents or network traffic is recorded here.
+struct LiveSession {
+    path: PathBuf,
+}
+
+impl LiveSession {
+    fn publish_at(path: PathBuf, pid: u32, program: &Path) -> std::io::Result<Self> {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "pid": pid,
+            "program": program,
+        }))?;
+        std::fs::write(&path, bytes)?;
+        Ok(Self { path })
+    }
+
+    fn publish(pid: u32, program: &Path) -> Option<Self> {
+        let path = std::env::var_os("CONSOLE_LAUNCHER_LIVE_SESSION")?;
+        match Self::publish_at(path.into(), pid, program) {
+            Ok(session) => Some(session),
+            Err(error) => {
+                log::warn!("live performance panel unavailable: {error}");
+                None
+            }
+        }
+    }
+}
+
+impl Drop for LiveSession {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Runs the session and blocks until the emulator exits.
 pub fn run(
     plan: &LaunchPlan,
@@ -485,6 +519,8 @@ pub fn run(
         program: plan.program.display().to_string(),
         source,
     })?;
+
+    let _live_session = LiveSession::publish(child.id(), &plan.program);
 
     let mut presentmon = None;
     let pm_file = capture.map(|c| {
@@ -619,6 +655,20 @@ mod tests {
         std::env::remove_var("CONSOLE_LAUNCHER_TOOLS");
     }
 
+    #[test]
+    fn live_handoff_contains_only_the_launched_process_and_is_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        let session =
+            LiveSession::publish_at(path.clone(), 4242, Path::new("emulator.exe")).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(value["pid"], 4242);
+        assert_eq!(value["program"], "emulator.exe");
+        assert_eq!(value.as_object().unwrap().len(), 2);
+        drop(session);
+        assert!(!path.exists());
+    }
     #[test]
     fn missing_program_is_an_error() {
         let plan = LaunchPlan {

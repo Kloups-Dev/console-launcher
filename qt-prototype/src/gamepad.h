@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QThread>
 #include <QTimer>
+#include <QVariantMap>
 
 /// Runs on its own thread (see Gamepad).
 class GamepadWorker : public QObject {
@@ -21,6 +22,7 @@ public:
 Q_SIGNALS:
     void nav(const QString &action);
     void padName(const QString &name);
+    void inputEvent(const QVariantMap &event);
 
 private:
     void poll();
@@ -49,6 +51,7 @@ public:
 Q_SIGNALS:
     void nav(const QString &action);
     void padName(const QString &name);
+    void inputEvent(const QVariantMap &event);
 
 private:
     QThread m_thread;

@@ -25,6 +25,40 @@ QString buttonAction(Uint8 b) {
     }
 }
 
+QString buttonName(Uint8 b) {
+    switch (b) {
+    case SDL_CONTROLLER_BUTTON_A: return "a";
+    case SDL_CONTROLLER_BUTTON_B: return "b";
+    case SDL_CONTROLLER_BUTTON_X: return "x";
+    case SDL_CONTROLLER_BUTTON_Y: return "y";
+    case SDL_CONTROLLER_BUTTON_BACK: return "back";
+    case SDL_CONTROLLER_BUTTON_GUIDE: return "guide";
+    case SDL_CONTROLLER_BUTTON_TOUCHPAD: return "touchpad";
+    case SDL_CONTROLLER_BUTTON_START: return "start";
+    case SDL_CONTROLLER_BUTTON_LEFTSTICK: return "leftstick";
+    case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return "rightstick";
+    case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: return "leftshoulder";
+    case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return "rightshoulder";
+    case SDL_CONTROLLER_BUTTON_DPAD_UP: return "dpad-up";
+    case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return "dpad-down";
+    case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return "dpad-left";
+    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return "dpad-right";
+    default: return {};
+    }
+}
+
+QString axisName(Uint8 axis) {
+    switch (axis) {
+    case SDL_CONTROLLER_AXIS_LEFTX: return "leftx";
+    case SDL_CONTROLLER_AXIS_LEFTY: return "lefty";
+    case SDL_CONTROLLER_AXIS_RIGHTX: return "rightx";
+    case SDL_CONTROLLER_AXIS_RIGHTY: return "righty";
+    case SDL_CONTROLLER_AXIS_TRIGGERLEFT: return "lefttrigger";
+    case SDL_CONTROLLER_AXIS_TRIGGERRIGHT: return "righttrigger";
+    default: return {};
+    }
+}
+
 bool isDirection(const QString &a) {
     return a == "up" || a == "down" || a == "left" || a == "right";
 }
@@ -37,6 +71,7 @@ Gamepad::Gamepad(QObject *parent) : QObject(parent) {
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(m_worker, &GamepadWorker::nav, this, &Gamepad::nav);
     connect(m_worker, &GamepadWorker::padName, this, &Gamepad::padName);
+    connect(m_worker, &GamepadWorker::inputEvent, this, &Gamepad::inputEvent);
 }
 
 Gamepad::~Gamepad() {
@@ -123,6 +158,11 @@ void GamepadWorker::poll() {
             m_held.clear();
             break;
         case SDL_CONTROLLERBUTTONDOWN: {
+            const QString control = buttonName(e.cbutton.button);
+            if (!control.isEmpty())
+                Q_EMIT inputEvent({{"source", "controller"},
+                                   {"control", control},
+                                   {"value", 1.0}});
             const QString a = buttonAction(e.cbutton.button);
             if (a.isEmpty())
                 break;
@@ -134,12 +174,24 @@ void GamepadWorker::poll() {
             }
             break;
         }
-        case SDL_CONTROLLERBUTTONUP:
+        case SDL_CONTROLLERBUTTONUP: {
+            const QString control = buttonName(e.cbutton.button);
+            if (!control.isEmpty())
+                Q_EMIT inputEvent({{"source", "controller"},
+                                   {"control", control},
+                                   {"value", 0.0}});
             if (buttonAction(e.cbutton.button) == m_held)
                 m_held.clear();
             break;
+        }
         case SDL_CONTROLLERAXISMOTION: {
-            const float v = e.caxis.value / 32767.0f;
+            const QString control = axisName(e.caxis.axis);
+            if (control.isEmpty())
+                break;
+            const float v = qBound(-1.0f, e.caxis.value / 32767.0f, 1.0f);
+            Q_EMIT inputEvent({{"source", "controller"},
+                               {"control", control},
+                               {"value", v}});
             if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX)
                 m_x = v;
             else if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY)
