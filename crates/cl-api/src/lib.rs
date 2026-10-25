@@ -121,7 +121,7 @@ fn dispatch(
         "config" => to_value(&engine.config),
 
         "library" => {
-            let games = engine.games();
+            let games = engine.refresh_games();
             Ok(json!({ "systems": engine.systems(&games), "games": games }))
         }
 

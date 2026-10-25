@@ -117,4 +117,7 @@ private:
     QString m_language = QStringLiteral("fr");
     QString m_error;
     std::uint64_t m_libraryRequestId = 0;
+    bool m_libraryReloadScheduled = false;
+    bool m_libraryReloadInFlight = false;
+    bool m_libraryReloadAgain = false;
 };

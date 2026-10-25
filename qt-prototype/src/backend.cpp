@@ -132,20 +132,39 @@ QString Backend::localPath(const QUrl &url) const {
 }
 
 void Backend::reload() {
-    const std::uint64_t requestId = ++m_libraryRequestId;
-    async("library", QVariant(), [this, requestId](const Engine::Answer &a) {
-        if (requestId != m_libraryRequestId)
-            return;
-        if (!a.ok) {
-            setError(a.error);
-            return;
-        }
-        const QVariantMap lib = a.result.toMap();
-        m_systems = lib.value("systems").toList();
-        m_games = lib.value("games").toList();
-        setError(QString());
-        Q_EMIT libraryChanged();
-    });
+    ++m_libraryRequestId;
+    if (m_libraryReloadScheduled || m_libraryReloadInFlight) {
+        m_libraryReloadAgain = true;
+        return;
+    }
+    m_libraryReloadScheduled = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            m_libraryReloadScheduled = false;
+            m_libraryReloadInFlight = true;
+            const std::uint64_t requestId = m_libraryRequestId;
+            async("library", QVariant(), [this, requestId](const Engine::Answer &a) {
+                m_libraryReloadInFlight = false;
+                if (m_libraryReloadAgain) {
+                    m_libraryReloadAgain = false;
+                    reload();
+                    return;
+                }
+                if (requestId != m_libraryRequestId)
+                    return;
+                if (!a.ok) {
+                    setError(a.error);
+                    return;
+                }
+                const QVariantMap lib = a.result.toMap();
+                m_systems = lib.value("systems").toList();
+                m_games = lib.value("games").toList();
+                setError(QString());
+                Q_EMIT libraryChanged();
+            });
+        },
+        Qt::QueuedConnection);
 }
 
 void Backend::requestInfo(const QString &gameId) {

@@ -20,7 +20,7 @@ use cl_perf::estimate::{estimate, GpuClass, HwSummary, LadderKind};
 use cl_perf::frametime::{analyse, parse_file, verdict, FrameStats, Verdict};
 use cl_perf::store::{GameTuning, ProfileStore, RunRecord};
 use cl_perf::tuner::TuneState;
-use cl_session::{CaptureRequest, SessionResult};
+use cl_session::{CaptureRequest, SessionRecord, SessionResult};
 use cl_updater::{sources, ManagedEmulator, Source};
 use serde::Serialize;
 use std::cell::RefCell;
@@ -42,6 +42,8 @@ pub enum EngineError {
     NotAFile(PathBuf),
     #[error("{path} is not a supported {system} game")]
     UnsupportedGameFile { path: PathBuf, system: SystemId },
+    #[error("invalid custom emulator: {0}")]
+    InvalidCustomEmulator(String),
     #[error(transparent)]
     Adapter(#[from] cl_adapters::AdapterError),
     #[error(transparent)]
@@ -76,6 +78,9 @@ impl EngineError {
                 path.display(),
                 system.info().name
             ),
+            EngineError::InvalidCustomEmulator(message) => {
+                format!("Configuration d'émulateur personnalisée invalide : {message}")
+            }
             EngineError::InstallUnavailable(name) => {
                 format!("L'installation automatique n'est pas disponible pour {name}")
             }
@@ -214,6 +219,7 @@ pub struct Engine {
     /// Profile files that could not be read, for the settings screen.
     pub profile_errors: Vec<String>,
     index: RefCell<Option<ExeIndex>>,
+    library_cache: RefCell<Option<Vec<Game>>>,
 }
 
 fn now() -> u64 {
@@ -221,6 +227,21 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+fn session_outcome(exit_code: Option<i32>) -> (&'static str, Option<String>) {
+    match exit_code {
+        Some(0) => ("completed", None),
+        Some(code) => ("failed", Some(format!("emulator exited with code {code}"))),
+        None => (
+            "failed",
+            Some("emulator did not report a normal exit code".into()),
+        ),
+    }
+}
+
+fn session_can_update_tuning(exit_code: Option<i32>) -> bool {
+    exit_code == Some(0)
 }
 
 /// Picks the French or English text according to the interface language.
@@ -238,6 +259,27 @@ fn same_name(p: &Path, names: &[String]) -> bool {
         .is_some_and(|n| names.iter().any(|x| x.to_lowercase() == n))
 }
 
+fn validate_custom_emulator(
+    path: &Path,
+    systems: &[SystemId],
+    args: &[String],
+) -> Result<(), EngineError> {
+    if !path.is_file() {
+        return Err(EngineError::NotAFile(path.to_path_buf()));
+    }
+    if systems.is_empty() {
+        return Err(EngineError::InvalidCustomEmulator(
+            "at least one console must be selected".into(),
+        ));
+    }
+    if !args.is_empty() && !args.iter().any(|arg| arg.contains("{rom}")) {
+        return Err(EngineError::InvalidCustomEmulator(
+            "arguments must contain {rom}, or be empty".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl Engine {
     pub fn load(paths: Paths) -> Result<Engine, EngineError> {
         let config = AppConfig::load(&paths.config_file())?;
@@ -251,6 +293,7 @@ impl Engine {
             user_profiles: Vec::new(),
             profile_errors: Vec::new(),
             index: RefCell::new(None),
+            library_cache: RefCell::new(None),
         };
         engine.reload_profiles();
         if engine.migrate_config() {
@@ -266,6 +309,10 @@ impl Engine {
         self.config.save(&self.paths.config_file())?;
         self.index.replace(None);
         Ok(())
+    }
+
+    fn invalidate_library(&self) {
+        self.library_cache.replace(None);
     }
 
     /// Reads the profile files of the data folder again.
@@ -370,6 +417,7 @@ impl Engine {
         }
         if changed {
             self.index.replace(None);
+            self.invalidate_library();
         }
         changed
     }
@@ -417,6 +465,7 @@ impl Engine {
                     return Ok(FolderKind::AlreadyAdded);
                 }
                 self.config.rom_dirs.push(p);
+                self.invalidate_library();
             }
             FolderKind::Emulators => {
                 if self.config.emulator_dirs.iter().any(|e| p.starts_with(e)) {
@@ -434,6 +483,7 @@ impl Engine {
     pub fn remove_path(&mut self, p: &Path) -> Result<(), EngineError> {
         self.config.rom_dirs.retain(|d| d != p);
         self.config.emulator_dirs.retain(|d| d != p);
+        self.invalidate_library();
         self.save_config()
     }
 
@@ -459,11 +509,13 @@ impl Engine {
                 .imported_games
                 .push(ImportedGame { path, system });
         }
+        self.invalidate_library();
         self.save_config()
     }
 
     pub fn remove_game(&mut self, path: &Path) -> Result<(), EngineError> {
         self.config.imported_games.retain(|g| g.path != path);
+        self.invalidate_library();
         self.save_config()
     }
 
@@ -486,6 +538,12 @@ impl Engine {
         if self.adapter(id).is_none() {
             return Err(EngineError::UnknownEmulator(id.into()));
         }
+        if path.is_none() && self.config.custom_emulators.contains_key(id) {
+            return Err(EngineError::InvalidCustomEmulator(
+                "a custom emulator has no automatic detection path; remove it or choose a new executable"
+                    .into(),
+            ));
+        }
         if let Some(p) = &path {
             if !p.is_file() {
                 return Err(EngineError::NotAFile(p.clone()));
@@ -507,6 +565,11 @@ impl Engine {
     ) -> Result<String, EngineError> {
         if !path.is_file() {
             return Err(EngineError::NotAFile(path));
+        }
+        if !args.is_empty() && !args.iter().any(|arg| arg.contains("{rom}")) {
+            return Err(EngineError::InvalidCustomEmulator(
+                "arguments must contain {rom}, or be empty".into(),
+            ));
         }
         if let Some(FolderKind::Emulator { id }) = self.classify(&path) {
             self.set_path_in_config(&id, Some(path));
@@ -548,6 +611,7 @@ impl Engine {
         if !self.config.custom_emulators.contains_key(id) {
             return Err(EngineError::UnknownEmulator(id.into()));
         }
+        validate_custom_emulator(&c.path, &c.systems, &c.args)?;
         self.config.custom_emulators.insert(id.into(), c);
         self.save_config()
     }
@@ -634,6 +698,9 @@ impl Engine {
     }
 
     pub fn games(&self) -> Vec<Game> {
+        if let Some(games) = self.library_cache.borrow().as_ref() {
+            return games.clone();
+        }
         let identity_file = self.paths.identity_cache_file();
         let mut identities = cl_library::IdentityCache::load(&identity_file);
         let mut games = cl_library::scan_cached(&self.config.rom_dirs, &mut identities);
@@ -657,7 +724,15 @@ impl Engine {
             (a.system, a.title.to_lowercase()).cmp(&(b.system, b.title.to_lowercase()))
         });
         cl_library::Favorites::load(&self.paths.root.join("favorites.json")).apply(&mut games);
+        self.library_cache.replace(Some(games.clone()));
         games
+    }
+
+    /// Invalidates and rebuilds the library for an explicit user refresh.
+    /// Ordinary consumers keep using the in-memory snapshot.
+    pub fn refresh_games(&self) -> Vec<Game> {
+        self.invalidate_library();
+        self.games()
     }
 
     /// Explicit network enrichment for one game. Scanning and launching stay
@@ -704,6 +779,7 @@ impl Engine {
             .records
             .insert(cl_library::MetadataCache::key(&game), metadata.clone());
         cache.save(&file)?;
+        self.invalidate_library();
         Ok(Some(metadata))
     }
 
@@ -712,6 +788,7 @@ impl Engine {
         let mut f = cl_library::Favorites::load(&file);
         let on = f.toggle(game_id);
         f.save(&file)?;
+        self.invalidate_library();
         Ok(on)
     }
 
@@ -1172,17 +1249,67 @@ impl Engine {
     /// Plays a game (blocking until the emulator closes) and updates its profile.
     pub fn play(&mut self, game: &Game) -> Result<PlayReport, EngineError> {
         let (prepared, mut tuning) = self.prepare(game)?;
+        let session_id = format!(
+            "{}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+            std::process::id()
+        );
+        let started_at = now();
+        let mut journal = SessionRecord {
+            session_id,
+            status: "started".into(),
+            started_at,
+            game_id: game.id.clone(),
+            game_title: game.title.clone(),
+            system: game.system.to_string(),
+            emulator: format!("{} ({})", prepared.emulator, prepared.emulator_name),
+            profile_step: prepared.step,
+            profile_label: prepared.step_label.clone(),
+            hardware: self.hw_fingerprint(),
+            measure_requested: prepared.measure,
+            ..Default::default()
+        };
+        let journal_path =
+            match cl_session::journal::write_record(&self.paths.sessions_dir(), &journal) {
+                Ok(path) => Some(path),
+                Err(error) => {
+                    log::warn!("cannot create session journal: {error}");
+                    None
+                }
+            };
         let capture = prepared.measure.then(|| CaptureRequest {
             dir: self.paths.captures_dir().join(&game.id),
             delay_seconds: self.config.perf.capture_delay_seconds,
             seconds: self.config.perf.capture_seconds,
             presentmon: self.config.perf.presentmon_path.clone(),
         });
-        let session = cl_session::run(&prepared.plan, capture.as_ref())?;
+        let session = match cl_session::run(&prepared.plan, capture.as_ref()) {
+            Ok(session) => session,
+            Err(error) => {
+                journal.status = "failed".into();
+                journal.ended_at = Some(now());
+                journal.error = Some(error.to_string());
+                if let Some(path) = &journal_path {
+                    if let Err(write_error) =
+                        cl_session::journal::write_record(&self.paths.sessions_dir(), &journal)
+                    {
+                        log::warn!(
+                            "cannot update session journal {}: {write_error}",
+                            path.display()
+                        );
+                    }
+                }
+                return Err(error.into());
+            }
+        };
         let mut notes = prepared.notes.clone();
         if let Some(n) = &session.capture_note {
             notes.push(n.clone());
         }
+        let session_can_update_tuning = session_can_update_tuning(session.exit_code);
 
         let mut stats = None;
         let mut result_verdict = None;
@@ -1193,19 +1320,46 @@ impl Engine {
             {
                 Ok(s) => {
                     let v = verdict(&s);
-                    tuning.push_run(RunRecord {
-                        at: now(),
-                        step: prepared.step,
-                        stats: s.clone(),
-                        verdict: v,
-                    });
+                    if session_can_update_tuning {
+                        tuning.push_run(RunRecord {
+                            at: now(),
+                            step: prepared.step,
+                            stats: s.clone(),
+                            verdict: v,
+                        });
+                    } else {
+                        notes.push(
+                            "Measurement shown but not used for tuning: emulator failed".into(),
+                        );
+                    }
                     stats = Some(s);
                     result_verdict = Some(v);
                 }
                 Err(e) => notes.push(format!("Measurement ignored: {e}")),
             }
         }
-        self.profiles().save(&tuning)?;
+        if session_can_update_tuning {
+            self.profiles().save(&tuning)?;
+        }
+        let (status, error) = session_outcome(session.exit_code);
+        if let Some(detail) = &error {
+            notes.push(detail.clone());
+        }
+        journal.status = status.into();
+        journal.error = error;
+        journal.ended_at = Some(now());
+        journal.capture_produced = session.capture_file.is_some();
+        journal.capture_note = session.capture_note.clone();
+        journal.exit_code = session.exit_code;
+        journal.played_seconds = Some(session.played_seconds);
+        journal.verdict = result_verdict.map(|v| format!("{v:?}"));
+        if let Some(path) = journal_path {
+            if let Err(error) =
+                cl_session::journal::write_record(&self.paths.sessions_dir(), &journal)
+            {
+                log::warn!("cannot update session journal {}: {error}", path.display());
+            }
+        }
 
         let ladder = prepared.ladder;
         Ok(PlayReport {
@@ -1288,6 +1442,25 @@ mod tests {
         )
         .unwrap();
         Engine::load(paths).unwrap()
+    }
+
+    #[test]
+    fn session_outcome_requires_a_zero_exit_code() {
+        assert_eq!(session_outcome(Some(0)), ("completed", None));
+        assert!(session_can_update_tuning(Some(0)));
+        assert_eq!(
+            session_outcome(Some(3)),
+            ("failed", Some("emulator exited with code 3".into()))
+        );
+        assert!(!session_can_update_tuning(Some(3)));
+        assert_eq!(
+            session_outcome(None),
+            (
+                "failed",
+                Some("emulator did not report a normal exit code".into())
+            )
+        );
+        assert!(!session_can_update_tuning(None));
     }
 
     #[test]
@@ -1575,5 +1748,48 @@ mod tests {
         assert!(p.plan.tweaks.high_priority);
         engine.remove_custom_emulator(&id).unwrap();
         assert!(engine.config.system_emulator.is_empty());
+    }
+
+    #[test]
+    fn custom_emulator_updates_require_valid_launch_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe_path = dir.path().join("bin").join(exe("my-emu"));
+        touch(&exe_path);
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        let id = engine
+            .add_custom_emulator(
+                exe_path.clone(),
+                "Mine".into(),
+                vec![SystemId::Snes],
+                vec![],
+            )
+            .unwrap();
+
+        let missing = dir.path().join("missing-emu");
+        let error = engine
+            .update_custom_emulator(
+                &id,
+                CustomEmulator {
+                    name: "Mine".into(),
+                    path: missing,
+                    args: vec!["{rom}".into()],
+                    systems: vec![SystemId::Snes],
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(error, EngineError::NotAFile(_)));
+
+        let error = engine
+            .update_custom_emulator(
+                &id,
+                CustomEmulator {
+                    name: "Mine".into(),
+                    path: exe_path,
+                    args: vec!["--fullscreen".into()],
+                    systems: vec![SystemId::Snes],
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(error, EngineError::InvalidCustomEmulator(_)));
     }
 }

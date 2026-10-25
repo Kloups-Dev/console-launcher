@@ -234,8 +234,13 @@ fn run() -> Result<()> {
             let game = find_game(&engine, &query)?;
             let r = engine.play(&game)?;
             print(json, &r, || {
+                let outcome = if r.session.exit_code == Some(0) {
+                    "Completed"
+                } else {
+                    "Failed"
+                };
                 println!(
-                    "Played {} s, exit code {:?}",
+                    "{outcome}: {} s, exit code {:?}",
                     r.session.played_seconds, r.session.exit_code
                 );
                 if let (Some(s), Some(v)) = (&r.stats, &r.verdict) {
