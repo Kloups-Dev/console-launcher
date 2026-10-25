@@ -31,13 +31,19 @@ Window {
     }
     function setting(key) {
         const kept = context.kept || []
-        if (kept.indexOf(key) >= 0) return "Choix manuel conservé"
-        return settings[key] !== undefined ? String(settings[key]) : "Géré par l’émulateur"
+        const manual = kept.indexOf(key) >= 0
+        const values = manual ? (context.keptValues || {}) : settings
+        if (values[key] === undefined || values[key] === null) return manual ? "Choix manuel conservé" : "Géré par l’émulateur"
+        let value = String(values[key])
+        if (key === "GFX.Settings.ShaderCompilationMode") value = ({"0":"Spécialisés", "1":"Exclusifs", "2":"Hybrides", "3":"Saut de rendu"})[value] || value
+        else if (value.toLowerCase() === "true") value = "Activé"
+        else if (value.toLowerCase() === "false") value = "Désactivé"
+        return value + (manual ? " · manuel" : "")
     }
     function problems() {
         let lines = []
         if (!stats.measured) lines.push("FPS non mesurés : vérifier le collecteur et son autorisation Windows.")
-        if (stats.measured && stats.p99Ms > stats.medianMs * 2) lines.push("Pics de durée d’image : saccades possibles sur les 2 dernières secondes.")
+        if (stats.measured && stats.spikes > 0 && stats.maxMs > stats.medianMs * 2) lines.push("Pics de durée d’image : saccades possibles sur les 2 dernières secondes.")
         if (stats.gpuProcessBusy >= 95) lines.push("Moteur GPU de l’émulateur très chargé : la résolution est une piste à examiner.")
         if (stats.systemRamPercent >= 90) lines.push("Mémoire du PC presque pleine.")
         const cards = stats.gpuCards || []
@@ -47,7 +53,7 @@ Window {
     }
     function gpuText() {
         const cards = stats.gpuCards || []
-        if (!cards.length) return "Capteurs du pilote non disponibles"
+        if (!cards.length) return (hardware.gpus || []).map(c => c.name).join(" · ") + "\nCapteurs du pilote non disponibles"
         return cards.map(c => (c.name || "GPU") + " · " + format(c.busy,0," %") + " · "
                          + format(c.temperature,0," °C") + " · " + format(c.clockMhz,0," MHz")
                          + " · " + format(c.powerW,1," W") + " · VRAM "
@@ -80,6 +86,7 @@ Window {
         visible: !overlay.detailed
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         anchors.margins: 14; spacing: 5
+        Text { text: "FPS PRÉSENTÉS · CONSOLE LAUNCHER"; color: "#829bb9"; font.pixelSize: 10 }
         RowLayout {
             Layout.fillWidth: true
             Text { text: stats.measured ? overlay.number("fps",1," FPS") : "FPS —"; color: "#ffffff"; font.pixelSize: 25; font.bold: true; Layout.fillWidth: true }
@@ -151,7 +158,7 @@ Window {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 1
                 heading: "03  CONTEXTE · RÉGLAGES DEMANDÉS"
                 rows: [
-                    ["Profil / priorité", (context.profile || "?") + " / " + (context.priority || "?")],
+                    ["Profil / priorité", (context.profile || "?") + " / " + (({"balanced":"Équilibré", "responsive":"Réactivité", "quality":"Qualité"})[context.priority] || "?")],
                     ["API choisie", context.api || "Non disponible"],
                     ["VSync Dolphin", overlay.setting("GFX.Hardware.VSync")],
                     ["Mode shaders Dolphin", overlay.setting("GFX.Settings.ShaderCompilationMode")],

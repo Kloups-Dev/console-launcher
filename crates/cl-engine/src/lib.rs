@@ -1367,8 +1367,9 @@ impl Engine {
                 watch.user_changed.insert(k.clone());
             }
         }
-        if let Some(after) = adapter.current_values(&exe, cfg.mode, &generated) {
-            watch.record(&after, &keys);
+        let after_values = adapter.current_values(&exe, cfg.mode, &generated);
+        if let Some(after) = &after_values {
+            watch.record(after, &keys);
         }
         if let Err(e) = watch.save(&watch_file) {
             log::warn!("cannot save {}: {e}", watch_file.display());
@@ -1389,6 +1390,7 @@ impl Engine {
             "profile": step.label, "api": tuning.api, "priority": self.config.perf.experience.key(),
             "hardware": self.hardware(false), "settings": step.settings,
             "kept": plan.settings_report.kept_user_value, "notes": notes,
+            "keptValues": after_values,
         });
         Ok((
             PreparedLaunch {
