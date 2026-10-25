@@ -133,6 +133,12 @@ pub struct AppConfig {
     pub system_emulator: BTreeMap<SystemId, String>,
     /// Emulators added by the user, keyed by an id (`custom-…`).
     pub custom_emulators: BTreeMap<String, CustomEmulator>,
+    /// Visual controller mappings, keyed by source device and target system.
+    /// Emulator-specific application is deliberately handled by adapters.
+    pub controller_mappings: BTreeMap<String, BTreeMap<String, f64>>,
+    /// Emulator-native mapping overrides. Keys are adapter-specific config
+    /// paths and values are validated strings passed only for the session.
+    pub emulator_mappings: BTreeMap<String, BTreeMap<String, String>>,
     pub perf: PerfConfig,
 }
 
@@ -148,6 +154,8 @@ impl Default for AppConfig {
             emulators: BTreeMap::new(),
             system_emulator: BTreeMap::new(),
             custom_emulators: BTreeMap::new(),
+            controller_mappings: BTreeMap::new(),
+            emulator_mappings: BTreeMap::new(),
             perf: PerfConfig::default(),
         }
     }

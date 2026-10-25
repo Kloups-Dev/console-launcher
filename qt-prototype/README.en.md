@@ -44,6 +44,10 @@ windeployqt --release --qmldir qt-prototype/ui build-qt/console-launcher-qt.exe
 copy C:\SDL2-2.32.10\lib\x64\SDL2.dll build-qt\
 ```
 
+From a source ZIP extracted at the repository root, `compile.bat` performs
+the same CMake build and detects common Qt 6.8 and SDL2 installation paths.
+Use `compile.bat test` to run the interface smoke test after building.
+
 ## Measurement tools
 
 The packages built by the CI carry the smoothness measurement tools in `tools/` next to the executable: `tools/presentmon/PresentMon-*.exe` on Windows, `tools/mangohud/libMangoHud*.so` on Linux. For a local build, place them there by hand, or set the `CONSOLE_LAUNCHER_TOOLS` variable to their folder. A copy installed on the machine takes precedence.

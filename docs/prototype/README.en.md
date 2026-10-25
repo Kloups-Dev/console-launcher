@@ -22,7 +22,12 @@ The interface is written in C++ / Qt Quick (Qt 6.8 LTS). The engine is written i
 | Hardware detection (CPU, RAM, GPU through Vulkan) and a "simulation" CPU test | ✅ |
 | Estimated starting settings, then real measurement and automatic per-game adjustment | ✅ Logic tested; **thresholds still to calibrate** on real machines |
 | Real-condition measurement, tool shipped with the launcher: PresentMon (Windows), MangoHud (Linux) | ⚠️ Integrated, not yet checked on a real game session |
-| Emulator installs and updates: displayed version, verified download, pinning, rollback | ✅ Dolphin 2609a directly on Windows; PCSX2 from GitHub. RetroArch remains manual for now |
+| Emulator installs and updates: displayed version, verified download, pinning, rollback | ✅ direct downloads from official releases for PCSX2, mGBA, DuckStation, PPSSPP, melonDS and Cemu; Dolphin on Windows; RetroArch remains manual |
+
+Native Dolphin controller mappings are stored separately from the visual
+controller state, using keys such as `dolphin:gamecube`. Valid
+`GCPad...`/`Wiimote...` values are passed as session `--config` overrides;
+the user's emulator files are not silently rewritten.
 | Settings changed by hand in an emulator are left alone, with a button to give them back to the launcher | ✅ Original files backed up before the first change ([EMULATORS.en.md](EMULATORS.en.md)) |
 | System optimisations for every emulator (priority, high-performance GPU on Windows) | ✅ Not yet checked on Windows |
 

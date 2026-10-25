@@ -36,6 +36,10 @@ Pendant une mesure, l'émulateur affiche chaque rafraîchissement de la console 
 
 Sous Windows, PresentMon cible uniquement l'identifiant du processus que le lanceur vient de démarrer. Il ne suit pas les entrées clavier/souris. S'il ne produit aucun CSV, son court journal local est repris dans le compte rendu de la partie afin que l'échec soit explicable au lieu d'être silencieux.
 
+L'overlay affiche aussi l'utilisation CPU et la mémoire résidente du processus
+de l'émulateur. Ces mesures sont échantillonnées localement et ne représentent
+pas la vitesse d'émulation, l'état audio, le GPU ou la température.
+
 Ces seuils sont **des valeurs de départ**. Ils seront confirmés ou corrigés après les premiers essais.
 
 ## Respect des réglages de l'utilisateur

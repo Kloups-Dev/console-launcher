@@ -237,6 +237,22 @@ impl EmulatorAdapter for Dolphin {
                 plan.settings_report.applied.push(k.clone());
             }
         }
+        if let Some(overrides) = ctx.controller_overrides {
+            for (key, value) in overrides {
+                if !key.starts_with("GCPad") && !key.starts_with("Wiimote") {
+                    return Err(AdapterError::Unsupported(format!(
+                        "Dolphin controller key '{key}' is not a GCPad/Wiimote setting"
+                    )));
+                }
+                if value.contains('\n') || value.contains('\r') {
+                    return Err(AdapterError::Unsupported(
+                        "Dolphin controller values cannot contain line breaks".into(),
+                    ));
+                }
+                plan.args.push(format!("--config={key}={value}"));
+                plan.settings_report.applied.push(key.clone());
+            }
+        }
         plan.args
             .push(format!("--exec={}", ctx.game.path.display()));
         Ok(plan)
@@ -263,6 +279,7 @@ mod tests {
                 generated_dir: dir.path(),
                 locked_keys: &[],
                 bios_dir: None,
+                controller_overrides: None,
             })
             .unwrap();
         assert_eq!(plan.args.first().unwrap(), "--batch");
@@ -274,6 +291,55 @@ mod tests {
             .contains(&"--config=Dolphin.Core.GFXBackend=Vulkan".to_string()));
         assert!(!plan.args.iter().any(|a| a.starts_with("--user")));
         assert_eq!(plan.args.last().unwrap(), "--exec=/g/gc/a.rvz");
+    }
+
+    #[test]
+    fn applies_validated_controller_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let g = game(SystemId::GameCube, "/g/gc/a.rvz");
+        let ladder = Dolphin.quality_ladder(SystemId::GameCube);
+        let overrides =
+            BTreeMap::from([("GCPad1/Buttons/A".to_string(), "Keyboard/Space".to_string())]);
+        let plan = Dolphin
+            .prepare(&LaunchContext {
+                exe: std::path::Path::new("/usr/bin/dolphin-emu"),
+                game: &g,
+                step: &ladder[0],
+                api: GraphicsApi::Vulkan,
+                mode: EmulatorMode::External,
+                generated_dir: dir.path(),
+                locked_keys: &[],
+                bios_dir: None,
+                controller_overrides: Some(&overrides),
+            })
+            .unwrap();
+        assert!(plan
+            .args
+            .contains(&"--config=GCPad1/Buttons/A=Keyboard/Space".to_string()));
+        assert!(plan
+            .settings_report
+            .applied
+            .contains(&"GCPad1/Buttons/A".to_string()));
+    }
+
+    #[test]
+    fn rejects_non_dolphin_controller_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let g = game(SystemId::GameCube, "/g/gc/a.rvz");
+        let ladder = Dolphin.quality_ladder(SystemId::GameCube);
+        let overrides = BTreeMap::from([("GFX/Unsafe".to_string(), "1".to_string())]);
+        let result = Dolphin.prepare(&LaunchContext {
+            exe: std::path::Path::new("/usr/bin/dolphin-emu"),
+            game: &g,
+            step: &ladder[0],
+            api: GraphicsApi::Vulkan,
+            mode: EmulatorMode::External,
+            generated_dir: dir.path(),
+            locked_keys: &[],
+            bios_dir: None,
+            controller_overrides: Some(&overrides),
+        });
+        assert!(matches!(result, Err(AdapterError::Unsupported(_))));
     }
 
     #[test]

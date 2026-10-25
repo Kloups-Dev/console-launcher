@@ -44,6 +44,11 @@ windeployqt --release --qmldir qt-prototype/ui build-qt/console-launcher-qt.exe
 copy C:\SDL2-2.32.10\lib\x64\SDL2.dll build-qt\
 ```
 
+Depuis un ZIP source extrait à la racine du dépôt, `compile.bat` effectue la
+même compilation CMake et détecte les chemins courants de Qt 6.8 et SDL2.
+Utiliser `compile.bat test` pour lancer le test de démarrage de l'interface
+après la compilation.
+
 ## Outils de mesure
 
 Les paquets produits par l'intégration continue contiennent les outils de mesure de fluidité dans `tools/`, à côté de l'exécutable : `tools/presentmon/PresentMon-*.exe` sous Windows, `tools/mangohud/libMangoHud*.so` sous Linux. Pour une compilation locale, les y placer à la main, ou indiquer leur dossier dans la variable `CONSOLE_LAUNCHER_TOOLS`. Une copie installée sur la machine est prioritaire.

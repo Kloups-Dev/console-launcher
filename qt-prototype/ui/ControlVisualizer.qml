@@ -9,9 +9,13 @@ Item {
     property var targetState: ({})
     property string lastControl: ""
     property real lastValue: 0
+    property string selectedTarget: "face-bottom"
+    property bool assignmentMode: false
+    property var assignments: ({})
     signal closeRequested()
 
     readonly property bool keyboard: device.currentIndex === 0
+    readonly property bool mouse: device.currentIndex === 1
     readonly property string system: ["gamecube", "ps2", "xbox", "ps5"][systemBox.currentIndex]
     readonly property var xboxTargetState: {
         const out = {}
@@ -32,13 +36,28 @@ Item {
     ]
 
     function active(code) { return Math.abs(Number(sourceState[code] || 0)) > 0.18 }
+    function calibrated(code, value) {
+        let out = Number(value)
+        const deadzone = Number(targetState.__deadzone || 0.12)
+        const sensitivity = Number(targetState.__sensitivity || 1.0)
+        if (code === "leftx" || code === "lefty" || code === "rightx" || code === "righty"
+            || code === "mousex" || code === "mousey") {
+            if (Math.abs(out) <= deadzone) return 0
+            out = Math.sign(out) * Math.min(1, (Math.abs(out) - deadzone) / (1 - deadzone) * sensitivity)
+            if ((code === "leftx" || code === "rightx" || code === "mousex") && targetState.__invertx)
+                out = -out
+            if ((code === "lefty" || code === "righty" || code === "mousey") && targetState.__inverty)
+                out = -out
+        }
+        return out
+    }
     function setTarget(out, code, value) {
         if (Math.abs(Number(value)) > Math.abs(Number(out[code] || 0))) out[code] = value
     }
     function rebuildTarget() {
         const out = {}
         for (const code in sourceState) {
-            const value = Number(sourceState[code] || 0)
+            const value = calibrated(code, sourceState[code] || 0)
             if (keyboard) {
                 if (code === "left") setTarget(out, "leftx", -value)
                 else if (code === "right") setTarget(out, "leftx", value)
@@ -59,6 +78,12 @@ Item {
                 else if (code === "enter") setTarget(out, "start", value)
                 else if (["t", "f", "g", "h"].indexOf(code) >= 0)
                     setTarget(out, "dpad-" + ({t:"up", f:"left", g:"down", h:"right"})[code], value)
+            } else if (mouse) {
+                if (code === "mousex") setTarget(out, "rightx", value)
+                else if (code === "mousey") setTarget(out, "righty", value)
+                else if (code === "mouse-left") setTarget(out, "face-bottom", value)
+                else if (code === "mouse-right") setTarget(out, "face-right", value)
+                else if (code === "mouse-middle") setTarget(out, "start", value)
             } else {
                 const face = {a:"face-bottom", b:"face-right", x:"face-left", y:"face-top"}
                 setTarget(out, face[code] || code, value)
@@ -67,9 +92,17 @@ Item {
         targetState = out
     }
     function accept(event) {
-        if ((keyboard && event.source !== "keyboard") || (!keyboard && event.source !== "controller")) return
+        if ((keyboard && event.source !== "keyboard")
+            || (mouse && event.source !== "mouse")
+            || (!keyboard && !mouse && event.source !== "controller")) return
         if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
             closeRequested(); return
+        }
+        if (assignmentMode && Number(event.value) > 0) {
+            const next = Object.assign({}, assignments)
+            next[selectedTarget] = event.control
+            assignments = next
+            assignmentMode = false
         }
         const copy = {}
         for (const key in sourceState) copy[key] = sourceState[key]
@@ -79,14 +112,94 @@ Item {
         lastValue = Number(event.value)
         rebuildTarget()
     }
-    function reset() { sourceState = {}; targetState = {}; lastControl = ""; lastValue = 0 }
+    function reset() {
+        sourceState = {}; targetState = {}; assignments = {}
+        lastControl = ""; lastValue = 0; assignmentMode = false
+    }
+    function mappingKey() {
+        return (keyboard ? "keyboard" : mouse ? "mouse" : device.currentText.toLower())
+            + ":p" + (player.currentIndex + 1) + ":" + system
+    }
+    function saveMapping() {
+        Launcher.internalRequest("save_control_mapping",
+                                 {key: mappingKey(), mapping: targetState},
+                                 function(ok, result) {
+                                     if (!ok) console.warn("mapping save failed:", result)
+                                 })
+        if (system === "gamecube" && keyboard) {
+            const native = {}
+            const paths = {
+                "face-bottom": "GCPad1/Buttons/A", "face-right": "GCPad1/Buttons/B",
+                "face-left": "GCPad1/Buttons/X", "face-top": "GCPad1/Buttons/Y",
+                "leftshoulder": "GCPad1/Triggers/L", "rightshoulder": "GCPad1/Triggers/R",
+                "start": "GCPad1/Buttons/Start", "dpad-up": "GCPad1/DPad/Up",
+                "dpad-down": "GCPad1/DPad/Down", "dpad-left": "GCPad1/DPad/Left",
+                "dpad-right": "GCPad1/DPad/Right"
+            }
+            const names = {
+                "space": "Space", "enter": "Return", "up": "Up", "down": "Down",
+                "left": "Left", "right": "Right", "tab": "Tab"
+            }
+            for (const target in assignments) {
+                const path = paths[target]
+                const source = assignments[target]
+                if (path && source)
+                    native[path] = "Keyboard/" + (names[source] || source.toUpperCase())
+            }
+            Launcher.internalRequest("save_emulator_mapping",
+                                     {key: "dolphin:gamecube", mapping: native},
+                                     function(ok, result) {
+                                         if (!ok) console.warn("Dolphin mapping save failed:", result)
+                                     })
+        }
+    }
+    function loadMapping() {
+        Launcher.internalRequest("get_control_mapping", {key: mappingKey()},
+                                 function(ok, result) {
+                                     if (ok && result) targetState = result
+                                 })
+        if (system === "gamecube" && keyboard) {
+            Launcher.internalRequest("get_emulator_mapping", {key: "dolphin:gamecube"},
+                                     function(ok, result) {
+                                         if (!ok || !result) return
+                                         const reverse = {
+                                             "GCPad1/Buttons/A": "face-bottom",
+                                             "GCPad1/Buttons/B": "face-right",
+                                             "GCPad1/Buttons/X": "face-left",
+                                             "GCPad1/Buttons/Y": "face-top",
+                                             "GCPad1/Triggers/L": "leftshoulder",
+                                             "GCPad1/Triggers/R": "rightshoulder",
+                                             "GCPad1/Buttons/Start": "start",
+                                             "GCPad1/DPad/Up": "dpad-up",
+                                             "GCPad1/DPad/Down": "dpad-down",
+                                             "GCPad1/DPad/Left": "dpad-left",
+                                             "GCPad1/DPad/Right": "dpad-right"
+                                         }
+                                         const next = {}
+                                         for (const path in result) {
+                                             const target = reverse[path]
+                                             const value = String(result[path])
+                                             if (target && value.indexOf("Keyboard/") === 0)
+                                                 next[target] = value.substring("Keyboard/".length).toLowerCase()
+                                         }
+                                         assignments = next
+                                     })
+        }
+    }
+    function restoreRecommended() {
+        reset()
+        const defaults = {"__deadzone": 0.12, "__sensitivity": 1.0, "__invertx": 0, "__inverty": 0}
+        targetState = defaults
+        saveMapping()
+    }
     function close() { Launcher.controlCapture = false; reset(); closeRequested() }
 
     onKeyboardChanged: reset()
-    onSystemChanged: rebuildTarget()
+    onSystemChanged: { rebuildTarget(); loadMapping() }
     onVisibleChanged: {
         Launcher.controlCapture = visible
-        if (!visible) reset()
+        if (visible) loadMapping()
+        else reset()
     }
     Component.onDestruction: Launcher.controlCapture = false
 
@@ -108,12 +221,14 @@ Item {
                 Label { text: "Boutons, gâchettes et direction des sticks en direct"; color: "#555" }
             }
             ComboBox {
-                id: device; currentIndex: 1; model: ["Clavier", "Xbox", "PS5"]
+                id: device; currentIndex: 0; model: ["Clavier", "Souris", "Xbox", "PS5"]
                 onCurrentIndexChanged: root.reset()
                 enabled: true; Layout.preferredWidth: 220
             }
             ComboBox { id: systemBox; model: ["GameCube", "PlayStation 2", "Xbox", "PS5"]; currentIndex: 1; Layout.preferredWidth: 160 }
             CheckBox { id: animations; text: "Animations"; checked: true }
+            Button { text: "Sauvegarder"; onClicked: root.saveMapping() }
+            Button { text: "Restaurer conseillé"; onClicked: root.restoreRecommended() }
             Button { text: "Fermer"; onClicked: root.close() }
         }
 
@@ -121,7 +236,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 18
             Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true; color: "white"; border.color: "black"; border.width: 2
-                Label { x: 18; y: 14; text: root.keyboard ? "CLAVIER" : (device.currentText.toUpperCase() + (Launcher.padName ? " — " + Launcher.padName : " — NON CONNECTÉE")); font.bold: true; color: "black" }
+                Label { x: 18; y: 14; text: root.keyboard || root.mouse ? device.currentText.toUpperCase() : (device.currentText.toUpperCase() + (Launcher.padName ? " — " + Launcher.padName : " — NON CONNECTÉE")); font.bold: true; color: "black" }
                 Item {
                     anchors.centerIn: parent; width: 380; height: 330; visible: root.keyboard
                     Repeater {
@@ -135,12 +250,20 @@ Item {
                         }
                     }
                 }
+                Item {
+                    anchors.centerIn: parent; width: 300; height: 260; visible: root.mouse
+                    Rectangle { x: 105; y: 20; width: 90; height: 180; radius: 42; color: root.active("mouse-left") ? "#1769aa" : "white"; border.color: "black"; border.width: 2 }
+                    Rectangle { x: 150; y: 20; width: 1; height: 55; color: "black" }
+                    Rectangle { x: 149; y: 70; width: 3; height: 38; color: root.active("mouse-middle") ? "#1769aa" : "black" }
+                    Text { x: 115; y: 215; text: "GAUCHE   MOLETTE   DROITE"; font.pixelSize: 10; color: "black" }
+                    Text { x: 115; y: 235; text: "Souris X/Y → stick droit"; font.pixelSize: 11; color: "#555" }
+                }
 
-                XboxControlPad { anchors.centerIn: parent; width: Math.min(parent.width - 30, 704); height: Math.max(0, parent.height - 85); visible: device.currentIndex === 1; active: root.sourceState; animationsEnabled: animations.checked }
+                XboxControlPad { anchors.centerIn: parent; width: Math.min(parent.width - 30, 704); height: Math.max(0, parent.height - 85); visible: device.currentIndex === 2; active: root.sourceState; animationsEnabled: animations.checked }
                 PS5ControlPad {
                     anchors.centerIn: parent
                     width: Math.max(0, parent.width - 30); height: Math.max(0, parent.height - 95)
-                    visible: device.currentIndex === 2
+                    visible: device.currentIndex === 3
                     active: root.targetState; animationsEnabled: animations.checked
                 }
             }
@@ -182,26 +305,102 @@ Item {
         }
 
         GridLayout {
-            Layout.fillWidth: true; visible: !root.keyboard
-            columns: width > 740 ? 4 : 2; columnSpacing: 24; rowSpacing: 6
+            Layout.fillWidth: true; columns: width > 740 ? 4 : 2; columnSpacing: 24; rowSpacing: 6
             Repeater {
                 model: [
                     {label: "STICK GAUCHE", x: "leftx", y: "lefty"},
                     {label: "STICK DROIT", x: "rightx", y: "righty"},
                     {label: "GÂCHETTE LT", trigger: "lefttrigger"},
-                    {label: "GÂCHETTE RT", trigger: "righttrigger"}
+                    {label: "GÂCHETTE RT", trigger: "righttrigger"},
+                    {label: "ZONE MORTE", setting: "deadzone"},
+                    {label: "SENSIBILITÉ", setting: "sensitivity"}
                 ]
                 ColumnLayout {
                     required property var modelData
                     Layout.fillWidth: true; spacing: 2
                     Label { text: modelData.label; color: "#555"; font.pixelSize: 11 }
                     Label {
-                        text: modelData.trigger
+                        visible: !root.keyboard && !root.mouse || modelData.setting
+                        text: modelData.setting === "deadzone"
+                            ? Math.round(Number(root.targetState.__deadzone || 0.12) * 100) + " %"
+                            : modelData.setting === "sensitivity"
+                            ? Number(root.targetState.__sensitivity || 1.0).toFixed(2)
+                            : modelData.trigger
                             ? Math.round(Math.max(0, Number(root.sourceState[modelData.trigger] || 0)) * 100) + " %"
                             : "X " + Number(root.sourceState[modelData.x] || 0).toFixed(2) + "   Y " + Number(root.sourceState[modelData.y] || 0).toFixed(2)
                         color: "#111"; font.pixelSize: 15; font.family: "Consolas"
                     }
                 }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Label { text: "Profil"; color: "#555" }
+            ComboBox {
+                id: player
+                model: ["Joueur 1", "Joueur 2", "Joueur 3", "Joueur 4"]
+                Layout.preferredWidth: 130
+                onCurrentIndexChanged: { root.reset(); root.loadMapping() }
+            }
+            Label { text: "Zone morte"; color: "#555" }
+            Slider {
+                id: deadzone
+                from: 0; to: 0.5
+                value: Number(root.targetState.__deadzone || 0.12)
+                Layout.fillWidth: true
+                onValueChanged: {
+                    const copy = Object.assign({}, root.targetState)
+                    copy.__deadzone = value
+                    root.targetState = copy
+                }
+            }
+            Label { text: Math.round(deadzone.value * 100) + " %"; color: "black" }
+            Label { text: "Sensibilité"; color: "#555" }
+            Slider {
+                id: sensitivity
+                from: 0.25; to: 2
+                value: Number(root.targetState.__sensitivity || 1)
+                Layout.fillWidth: true
+                onValueChanged: {
+                    const copy = Object.assign({}, root.targetState)
+                    copy.__sensitivity = value
+                    root.targetState = copy
+                }
+            }
+            CheckBox {
+                text: "Inv. X"; checked: !!root.targetState.__invertx
+                onToggled: { const copy = Object.assign({}, root.targetState); copy.__invertx = checked ? 1 : 0; root.targetState = copy }
+            }
+            CheckBox {
+                text: "Inv. Y"; checked: !!root.targetState.__inverty
+                onToggled: { const copy = Object.assign({}, root.targetState); copy.__inverty = checked ? 1 : 0; root.targetState = copy }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Label { text: "Affecter"; color: "#555" }
+            ComboBox {
+                id: targetPicker
+                model: [
+                    "face-bottom", "face-right", "face-left", "face-top",
+                    "leftshoulder", "rightshoulder", "start",
+                    "dpad-up", "dpad-down", "dpad-left", "dpad-right"
+                ]
+                currentIndex: 0
+                onCurrentTextChanged: root.selectedTarget = currentText
+                Layout.preferredWidth: 180
+            }
+            Button {
+                text: root.assignmentMode ? "Appuie maintenant…" : "Choisir une touche/bouton"
+                enabled: !root.assignmentMode
+                onClicked: root.assignmentMode = true
+            }
+            Label {
+                Layout.fillWidth: true
+                text: root.assignments[root.selectedTarget]
+                    ? root.selectedTarget + " ← " + root.assignments[root.selectedTarget]
+                    : "Aucune affectation"
+                color: "#555"
             }
         }
         RowLayout {

@@ -1205,6 +1205,11 @@ impl Engine {
             generated_dir: &generated,
             locked_keys: &locked,
             bios_dir: self.config.bios_dir.as_deref(),
+            controller_overrides: self.config.emulator_mappings.get(&format!(
+                "{}:{}",
+                adapter.id(),
+                game.system
+            )),
         })?;
         // The INI ledger may also have noticed a value changed by hand.
         for k in &plan.settings_report.kept_user_value {
@@ -1353,6 +1358,7 @@ impl Engine {
         journal.exit_code = session.exit_code;
         journal.played_seconds = Some(session.played_seconds);
         journal.verdict = result_verdict.map(|v| format!("{v:?}"));
+        journal.frame_stats = stats.clone();
         if let Some(path) = journal_path {
             if let Err(error) =
                 cl_session::journal::write_record(&self.paths.sessions_dir(), &journal)
