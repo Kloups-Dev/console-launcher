@@ -404,7 +404,7 @@ Item {
                 from: 0.25; to: 2
                 value: Number(root.targetState.__sensitivity || 1)
                 Layout.fillWidth: true
-                onValueChanged: {
+                onMoved: {
                     const copy = Object.assign({}, root.targetState)
                     copy.__sensitivity = value
                     root.targetState = copy

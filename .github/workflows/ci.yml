@@ -124,13 +124,19 @@ jobs:
           if (-not $p.WaitForExit(60000)) { $p.Kill(); $code = 2 } else { $code = $p.ExitCode }
           $log = if (Test-Path "$dir/console-launcher.log") { (Get-Content "$dir/console-launcher.log") -join '%0A' } else { "no log file" }
           if ($code -eq 0) { Write-Output "::notice title=Smoke test (Windows)::$log" }
-          else { Write-Output "Smoke test exit code: $code"; Write-Output "::error title=Smoke test (Windows)::$log"; exit 1 }
+          else {
+            Write-Output "Smoke test exit code: $code"
+            Write-Output "::error title=Smoke test (Windows)::$log"
+            Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-3)} -ErrorAction SilentlyContinue | Select-Object -First 2 -ExpandProperty Message
+            exit 1
+          }
           Remove-Item "$dir/console-launcher.log", "$dir/console-launcher-engine.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: console-launcher-qt-windows-x64
           path: dist
+          overwrite: true
 
   linux:
     name: package (Linux AppImage)
