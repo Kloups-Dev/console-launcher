@@ -9,6 +9,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <pdh.h>
+#include <pdhmsg.h>
 #endif
 
 struct SystemTelemetry::State {
