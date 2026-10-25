@@ -146,15 +146,27 @@ int main(int argc, char *argv[]) {
     backend.reload();
 
     if (smokeTest) {
+        // Exercise the same bridge as the Play button without downloading
+        // or launching anything. An unknown game must reach the Rust engine.
+        engine.globalObject().setProperty("prepareBridgePassed", false);
+        const QJSValue prepareCallback = engine.evaluate(QStringLiteral(
+            "(function(ok, result) { prepareBridgePassed = !ok && "
+            "String(result).indexOf('unknown game __smoke_missing_game__') >= 0; })"));
+        QJSValue prepareParams = engine.newObject();
+        prepareParams.setProperty("id", QStringLiteral("__smoke_missing_game__"));
+        backend.internalRequest(QStringLiteral("prepare_game"), prepareParams, prepareCallback);
         // CI check: the interface and its settings hierarchy must load, and
         // the library request must answer.
         QObject::connect(&backend, &Backend::libraryChanged, &app, [&] {
             qInfo("library answered: %lld systems", static_cast<long long>(backend.systems().size()));
         });
         QTimer::singleShot(250, &backend, [&backend] { backend.openSettings(); });
-        QTimer::singleShot(4000, &app, [&app, loaded] {
-            qInfo("smoke test %s", loaded ? "passed" : "FAILED");
-            app.exit(loaded ? 0 : 1);
+        QTimer::singleShot(4000, &app, [&app, &engine, loaded] {
+            const bool bridgePassed = engine.globalObject().property("prepareBridgePassed").toBool();
+            const bool passed = loaded && bridgePassed;
+            qInfo("prepare_game bridge %s", bridgePassed ? "passed" : "FAILED");
+            qInfo("smoke test %s", passed ? "passed" : "FAILED");
+            app.exit(passed ? 0 : 1);
         });
     }
     return app.exec();
