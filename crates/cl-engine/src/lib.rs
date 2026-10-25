@@ -1288,22 +1288,22 @@ impl Engine {
         })?;
         if adapter.id() == "retroarch" && cfg.mode == EmulatorMode::Managed {
             // Append user-visible image/resume choices to this session only.
-            use std::io::Write;
             let file = generated.join("retroarch").join(format!("{}.cfg", game.id));
-            let mut file = std::fs::OpenOptions::new()
-                .append(true)
-                .open(file)
-                .map_err(cl_adapters::AdapterError::from)?;
+            let text = std::fs::read_to_string(&file).map_err(cl_adapters::AdapterError::from)?;
+            let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
             for (key, value) in [
                 ("video_smooth", self.config.retroarch.smooth_image),
                 ("savestate_auto_save", self.config.retroarch.resume),
                 ("savestate_auto_load", self.config.retroarch.resume),
             ] {
                 if !locked.iter().any(|k| k == key) {
-                    writeln!(file, "{key} = \"{value}\"")
-                        .map_err(cl_adapters::AdapterError::from)?;
+                    lines
+                        .retain(|line| !line.split_once('=').is_some_and(|(k, _)| k.trim() == key));
+                    lines.push(format!("{key} = \"{value}\""));
                 }
             }
+            std::fs::write(file, lines.join("\n") + "\n")
+                .map_err(cl_adapters::AdapterError::from)?;
             notes.push("F1 : menu en jeu, F2 : sauvegarde instantanée, F4 : chargement instantané, Échap : quitter proprement. La reprise instantanée reste dépendante du cœur et de sa version.".into());
         }
         // The INI ledger may also have noticed a value changed by hand.
@@ -1684,6 +1684,77 @@ mod tests {
             engine.prepare(&g),
             Err(EngineError::EmulatorMissing { .. })
         ));
+    }
+
+    #[test]
+    fn managed_retroarch_options_replace_defaults_without_duplicate_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine_with_fake_hw(&dir.path().join("data"));
+        let runtime = dir.path().join("runtime").join(exe("retroarch"));
+        touch(&runtime);
+        let suffix = if cfg!(windows) { "dll" } else { "so" };
+        touch(
+            &runtime
+                .parent()
+                .unwrap()
+                .join("cores")
+                .join(format!("snes9x_libretro.{suffix}")),
+        );
+        let rom = dir.path().join("game.sfc");
+        touch(&rom);
+        engine.add_game(rom, SystemId::Snes).unwrap();
+        engine.config.emulators.insert(
+            "retroarch".into(),
+            EmulatorConfig {
+                path: Some(runtime),
+                mode: EmulatorMode::Managed,
+                ..Default::default()
+            },
+        );
+        engine.config.retroarch.smooth_image = true;
+        engine.config.retroarch.resume = true;
+        engine.config.perf.auto_tune = false;
+        let game = engine.games().remove(0);
+        engine.ensure_game_ready(&game).unwrap(); // installed core: no network
+        engine.prepare(&game).unwrap();
+        let text = std::fs::read_to_string(
+            engine
+                .paths
+                .generated_dir()
+                .join("retroarch")
+                .join(format!("{}.cfg", game.id)),
+        )
+        .unwrap();
+        for key in ["video_smooth", "savestate_auto_save", "savestate_auto_load"] {
+            let entries: Vec<_> = text
+                .lines()
+                .filter(|l| l.starts_with(&format!("{key} =")))
+                .collect();
+            assert_eq!(entries, vec![format!("{key} = \"true\"")]);
+        }
+    }
+
+    #[test]
+    fn missing_playstation_bios_is_reported_before_installation() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine_with_fake_hw(dir.path());
+        engine
+            .config
+            .system_emulator
+            .insert(SystemId::Psx, "retroarch".into());
+        let game = Game {
+            id: "x".into(),
+            system: SystemId::Psx,
+            title: "PSX".into(),
+            path: "x.cue".into(),
+            cover: None,
+            favorite: false,
+            identity: Default::default(),
+            metadata: None,
+        };
+        let error = engine.ensure_game_ready(&game).unwrap_err().to_string();
+        assert!(error.contains("scph5501.bin"));
+        assert!(!engine.paths.emulators_dir().exists());
     }
 
     fn touch(p: &std::path::Path) {

@@ -337,7 +337,13 @@ impl EmulatorAdapter for RetroArch {
         let dir = ctx.generated_dir.join("retroarch");
         std::fs::create_dir_all(&dir)?;
         let file = dir.join(format!("{}.cfg", ctx.game.id));
-        std::fs::write(&file, lines.join("\n") + "\n")?;
+        // RetroArch reads duplicates top-first: emit one entry per key.
+        let merged = parse_cfg(&lines.join("\n"));
+        let text = merged
+            .iter()
+            .map(|(k, v)| format!("{k} = \"{v}\"\n"))
+            .collect::<String>();
+        std::fs::write(&file, text)?;
 
         plan.args = vec![
             "-L".into(),
