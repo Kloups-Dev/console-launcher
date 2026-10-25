@@ -49,6 +49,27 @@ The current Qt Quick application provides:
 - a controller tester with keyboard, mouse and SDL gamepad input, including
   per-player/system local profiles, dead-zone, sensitivity and axis inversion
   settings.
+- on Windows, launcher-managed RetroArch 1.22.2 and its curated matching core
+  pack: choosing **Launch** prepares missing components internally;
+- managed RetroArch save files and save states outside emulator version folders,
+  periodic save-RAM writes, synchronised audio/video and controller autodetection;
+- optional smooth image and save-state resume in General settings; advanced
+  RetroArch features remain available through its in-game menu (F1).
+
+This integration uses the official RetroArch runtime internally. It is not a
+new implementation of a native Libretro frontend. The launcher chooses the core
+and owns the normal setup flow; it does not duplicate RetroArch's advanced menu.
+Automatic runtime/core setup currently targets Windows x64. First setup downloads
+about 432 MB of archives and requires additional space for extraction. Downloads
+are pinned and hash-checked. Only the core needed by a game is activated.
+
+Game save files are written under `<data>/saves/retroarch/<system>/<game-id>/`;
+save states are separate under `<data>/states/retroarch/<core>/<game-id>/`.
+Save-state resume is opt-in and depends on core/version compatibility. Keep using
+in-game saves. External emulator installations keep their existing save paths.
+BIOS/firmware files must still be supplied by the user when required by a core.
+An installed core is not a promise that every game or enhancement works correctly;
+physical controller, real-game image and audio validation remains necessary.
 
 The launcher keeps its data local by default. It does not upload games,
 controller input, logs or performance captures automatically.

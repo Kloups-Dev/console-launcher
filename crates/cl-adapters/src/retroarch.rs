@@ -187,11 +187,10 @@ impl EmulatorAdapter for RetroArch {
         Some(all.into_iter().filter(|(k, _)| keys.contains(k)).collect())
     }
 
-    /// For retro systems the GPU is rarely the limit, so the ladder trades
-    /// CPU time for lower input latency (run-ahead). Heavy cores stop at
-    /// "standard": run-ahead would double their CPU cost.
-    fn quality_ladder(&self, system: SystemId) -> Vec<QualityStep> {
-        let mut ladder = vec![
+    /// Automatic tuning only switches threaded video. Run-ahead/rewind are
+    /// core-dependent advanced choices, never promoted by a hardware estimate.
+    fn quality_ladder(&self, _system: SystemId) -> Vec<QualityStep> {
+        vec![
             step(
                 "Eco",
                 &[("video_threaded", "true"), ("run_ahead_enabled", "false")],
@@ -200,28 +199,7 @@ impl EmulatorAdapter for RetroArch {
                 "Standard",
                 &[("video_threaded", "false"), ("run_ahead_enabled", "false")],
             ),
-        ];
-        if system.info().cost <= 2 {
-            ladder.push(step(
-                "Low latency",
-                &[
-                    ("video_threaded", "false"),
-                    ("run_ahead_enabled", "true"),
-                    ("run_ahead_frames", "1"),
-                    ("run_ahead_secondary_instance", "true"),
-                ],
-            ));
-            ladder.push(step(
-                "Lowest latency",
-                &[
-                    ("video_threaded", "false"),
-                    ("run_ahead_enabled", "true"),
-                    ("run_ahead_frames", "2"),
-                    ("run_ahead_secondary_instance", "true"),
-                ],
-            ));
-        }
-        ladder
+        ]
     }
 
     fn prepare(&self, ctx: &LaunchContext) -> Result<LaunchPlan, AdapterError> {
@@ -254,10 +232,96 @@ impl EmulatorAdapter for RetroArch {
             "video_fullscreen = \"true\"".into(),
             "pause_nonactive = \"false\"".into(),
         ];
+        if ctx.mode == EmulatorMode::Managed {
+            // Saves live outside emulator versions and generated configuration.
+            let root = ctx.generated_dir.parent().unwrap_or(ctx.generated_dir);
+            let save = root
+                .join("saves/retroarch")
+                .join(ctx.game.system.to_string())
+                .join(&ctx.game.id);
+            let states = root.join("states/retroarch").join(core).join(&ctx.game.id);
+            let system = root.join("bios");
+            let settings = root.join("settings/retroarch");
+            let screenshots = root.join("screenshots/retroarch");
+            for dir in [&save, &states, &system, &settings, &screenshots] {
+                std::fs::create_dir_all(dir)?;
+            }
+            for (key, value) in [
+                ("savefile_directory", save),
+                ("savestate_directory", states),
+                ("system_directory", system),
+                ("rgui_config_directory", settings.clone()),
+                ("core_options_path", settings.join("core-options.cfg")),
+                ("content_history_dir", settings),
+                ("screenshot_directory", screenshots),
+            ] {
+                lines.push(format!(
+                    "{key} = \"{}\"",
+                    value.to_string_lossy().replace('\\', "/")
+                ));
+            }
+            for (key, value) in [
+                ("autosave_interval", "10"),
+                ("savestate_auto_save", "false"),
+                ("savestate_auto_load", "false"),
+                ("savestate_file_compression", "true"),
+                ("savestate_auto_index", "true"),
+                ("savestate_max_keep", "10"),
+                ("audio_enable", "true"),
+                ("audio_sync", "true"),
+                ("audio_rate_control", "true"),
+                ("audio_latency", "64"),
+                ("audio_resampler", "sinc"),
+                ("video_vsync", "true"),
+                ("video_swap_interval", "1"),
+                ("video_force_aspect", "true"),
+                ("video_smooth", "false"),
+                ("video_shader_enable", "false"),
+                ("video_frame_delay", "0"),
+                ("video_black_frame_insertion", "0"),
+                ("rewind_enable", "false"),
+                ("run_ahead_enabled", "false"),
+                ("preemptive_frames_enable", "false"),
+                ("input_autodetect_enable", "true"),
+                ("input_exit_emulator", "escape"),
+                ("input_menu_toggle", "f1"),
+                ("input_save_state", "f2"),
+                ("input_load_state", "f4"),
+                ("quit_press_twice", "false"),
+                ("menu_show_load_core", "false"),
+                ("menu_show_load_content", "false"),
+                ("rgui_show_start_screen", "false"),
+            ] {
+                if !ctx.locked_keys.iter().any(|k| k == key) {
+                    lines.push(format!("{key} = \"{value}\""));
+                }
+            }
+            if cfg!(windows) {
+                lines.push("audio_driver = \"wasapi\"".into());
+            }
+            if let Some(runtime) = ctx.exe.parent() {
+                for (key, subdir) in [
+                    ("joypad_autoconfig_dir", "autoconfig"),
+                    ("libretro_info_path", "info"),
+                    ("assets_directory", "assets"),
+                ] {
+                    lines.push(format!(
+                        "{key} = \"{}\"",
+                        runtime.join(subdir).to_string_lossy().replace('\\', "/")
+                    ));
+                }
+            }
+        }
         if ctx.locked_keys.iter().any(|l| l == DRIVER_KEY) {
             plan.settings_report.kept_user_value.push(DRIVER_KEY.into());
         } else {
-            lines.push(format!("{DRIVER_KEY} = \"{}\"", video_driver(ctx.api)));
+            // These hardware-rendered cores require an OpenGL context.
+            let driver = if matches!(ctx.game.system, SystemId::N64 | SystemId::Psx) {
+                "glcore"
+            } else {
+                video_driver(ctx.api)
+            };
+            lines.push(format!("{DRIVER_KEY} = \"{driver}\""));
         }
         if let Some(bios) = ctx.bios_dir {
             lines.push(format!("system_directory = \"{}\"", bios.display()));
@@ -307,14 +371,14 @@ mod tests {
 
         let g = game(SystemId::Snes, "/games/snes/a.sfc");
         let ladder = RetroArch.quality_ladder(SystemId::Snes);
-        assert_eq!(ladder.len(), 4);
+        assert_eq!(ladder.len(), 2);
         let gen = dir.path().join("gen");
-        let locked = vec!["run_ahead_frames".to_string()];
+        let locked = vec!["video_threaded".to_string()];
         let plan = RetroArch
             .prepare(&LaunchContext {
                 exe: &exe,
                 game: &g,
-                step: &ladder[3],
+                step: &ladder[1],
                 api: GraphicsApi::Vulkan,
                 mode: EmulatorMode::External,
                 generated_dir: &gen,
@@ -328,12 +392,9 @@ mod tests {
         assert_eq!(plan.args.last().unwrap(), "/games/snes/a.sfc");
         let cfg = std::fs::read_to_string(gen.join("retroarch/x.cfg")).unwrap();
         assert!(cfg.contains("config_save_on_exit = \"false\""));
-        assert!(cfg.contains("run_ahead_enabled = \"true\""));
-        assert!(!cfg.contains("run_ahead_frames"));
-        assert_eq!(
-            plan.settings_report.kept_user_value,
-            vec!["run_ahead_frames"]
-        );
+        assert!(cfg.contains("run_ahead_enabled = \"false\""));
+        assert!(!cfg.contains("video_threaded"));
+        assert_eq!(plan.settings_report.kept_user_value, vec!["video_threaded"]);
     }
 
     #[test]
@@ -357,5 +418,56 @@ mod tests {
     #[test]
     fn heavy_systems_have_no_run_ahead() {
         assert_eq!(RetroArch.quality_ladder(SystemId::N64).len(), 2);
+    }
+
+    #[test]
+    fn managed_saves_survive_runtime_versions_and_remain_separate_from_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let g = game(SystemId::Snes, "/games/a.sfc");
+        let generated = dir.path().join("generated");
+        let saves = dir.path().join("saves/retroarch/snes/x");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::write(saves.join("a.srm"), b"progress").unwrap();
+        let ladder = RetroArch.quality_ladder(g.system);
+        for version in ["old", "new"] {
+            let exe = dir
+                .path()
+                .join("emulators/retroarch/versions")
+                .join(version)
+                .join("retroarch.exe");
+            std::fs::create_dir_all(exe.parent().unwrap().join("cores")).unwrap();
+            std::fs::write(
+                exe.parent()
+                    .unwrap()
+                    .join("cores")
+                    .join(core_file("snes9x")),
+                b"core",
+            )
+            .unwrap();
+            RetroArch
+                .prepare(&LaunchContext {
+                    exe: &exe,
+                    game: &g,
+                    step: &ladder[1],
+                    api: GraphicsApi::Vulkan,
+                    mode: EmulatorMode::Managed,
+                    generated_dir: &generated,
+                    locked_keys: &[],
+                    bios_dir: None,
+                    controller_overrides: None,
+                })
+                .unwrap();
+            let settings =
+                parse_cfg(&std::fs::read_to_string(generated.join("retroarch/x.cfg")).unwrap());
+            assert_eq!(Path::new(&settings["savefile_directory"]), saves);
+            assert_ne!(
+                settings["savefile_directory"],
+                settings["savestate_directory"]
+            );
+            assert_eq!(settings["audio_sync"], "true");
+            assert_eq!(settings["autosave_interval"], "10");
+            assert_eq!(settings["run_ahead_enabled"], "false");
+            assert_eq!(std::fs::read(saves.join("a.srm")).unwrap(), b"progress");
+        }
     }
 }

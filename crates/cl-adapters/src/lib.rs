@@ -36,6 +36,7 @@ pub use dolphin::Dolphin;
 pub use pcsx2::Pcsx2;
 pub use profile::{Profile, ProfileAdapter};
 pub use retroarch::RetroArch;
+pub use retroarch::{default_core, find_core};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AdapterError {

@@ -140,6 +140,16 @@ pub struct AppConfig {
     /// paths and values are validated strings passed only for the session.
     pub emulator_mappings: BTreeMap<String, BTreeMap<String, String>>,
     pub perf: PerfConfig,
+    pub retroarch: RetroArchConfig,
+}
+
+/// User-facing choices; conservative audio/video defaults stay in the adapter.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetroArchConfig {
+    pub smooth_image: bool,
+    /// Optional save-state resume. In-game saves are always independent.
+    pub resume: bool,
 }
 
 impl Default for AppConfig {
@@ -157,6 +167,7 @@ impl Default for AppConfig {
             controller_mappings: BTreeMap::new(),
             emulator_mappings: BTreeMap::new(),
             perf: PerfConfig::default(),
+            retroarch: RetroArchConfig::default(),
         }
     }
 }

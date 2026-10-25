@@ -148,6 +148,12 @@ Item {
                 row(t("Langue", "Language"), fr ? "Français" : "English", () => prefs({ language: fr ? "en" : "fr" })),
                 row(t("Plein écran", "Fullscreen"), "F11", () => Launcher.toggleFullscreen()),
                 row(t("Contrôles du launcher", "Launcher controls"), Launcher.padName || t("Clavier", "Keyboard"), () => push("controls")),
+                block(t("Moteur rétro intégré", "Integrated retro engine"), t(
+                    "Moteur RetroArch interne : installation et choix du cœur au lancement. F1 : menu en jeu · F2 : sauvegarde instantanée · F4 : chargement · Échap : quitter. Les sauvegardes du jeu restent séparées de la reprise instantanée.",
+                    "Internal RetroArch engine: engine and core prepared at launch. F1: in-game menu · F2: save state · F4: load state · Escape: quit. In-game saves remain separate from instant resume.")),
+                row(t("Image rétro lissée", "Smooth retro image"), onOff(c.retroarch.smooth_image), () => prefs({ retroarchSmoothImage: !c.retroarch.smooth_image })),
+                row(t("Reprise instantanée à la fermeture", "Resume after closing"), onOff(c.retroarch.resume), () => prefs({ retroarchResume: !c.retroarch.resume })),
+                block("", small(t("Reprise désactivée par défaut : sa compatibilité dépend du cœur et de sa version. Sauvegarde aussi depuis le jeu. Les options avancées restent accessibles avec F1.", "Resume is off by default: compatibility depends on the core and version. Also save inside the game. Advanced options remain available with F1."))),
                 row(t("Dossiers et bibliothèque", "Folders and library"), "›", () => push("folders")),
                 row(t("Quitter le launcher", "Quit the launcher"), "⏻", () => Launcher.quit()),
                 backRow()

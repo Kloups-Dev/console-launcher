@@ -93,6 +93,12 @@ pub fn source_for(id: &str) -> Option<Source> {
         "dolphin" => Source::Manual {
             page: "https://dolphin-emu.org/download/",
         },
+        "retroarch" if cfg!(windows) => Source::Pinned {
+            version: "1.22.2",
+            asset_name: "RetroArch.7z",
+            url: "https://buildbot.libretro.com/stable/1.22.2/windows/x86_64/RetroArch.7z",
+            sha256: "B2139B1D0F9D4526DC6B5CE23CBB3EFDC766096FA6F2C3DF016818B486AC6372",
+        },
         "retroarch" => Source::Manual {
             page: "https://www.retroarch.com/?page=platforms",
         },
@@ -212,6 +218,16 @@ pub fn download(release: &Release, dir: &Path) -> Result<PathBuf, UpdateError> {
         .filter(|c| c.is_ascii_alphanumeric() || ".-_".contains(*c))
         .collect();
     let dest = dir.join(&safe);
+    // A cached executable archive is reused only after verifying its pinned hash.
+    if let Some(expected) = &release.sha256 {
+        if let Ok(mut cached) = std::fs::File::open(&dest) {
+            let mut hash = Sha256::new();
+            std::io::copy(&mut cached, &mut hash)?;
+            if format!("{:X}", hash.finalize()).eq_ignore_ascii_case(expected) {
+                return Ok(dest);
+            }
+        }
+    }
     let partial = dir.join(format!("{safe}.part"));
     let mut resp = ureq::get(&release.url)
         .header("User-Agent", USER_AGENT)
@@ -299,9 +315,15 @@ mod tests {
                 "{id} should expose an official release source"
             );
         }
-        assert!(matches!(
-            source_for("retroarch"),
-            Some(Source::Manual { .. })
-        ));
+        if cfg!(windows) {
+            let release = latest(&source_for("retroarch").unwrap()).unwrap().unwrap();
+            assert_eq!(release.version, "1.22.2");
+            assert_eq!(release.sha256.as_deref().map(str::len), Some(64));
+        } else {
+            assert!(matches!(
+                source_for("retroarch"),
+                Some(Source::Manual { .. })
+            ));
+        }
     }
 }

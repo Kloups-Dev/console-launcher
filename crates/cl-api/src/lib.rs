@@ -44,6 +44,8 @@ struct Preferences {
     presentmon_path: Option<String>,
     language: Option<String>,
     theme: Option<String>,
+    retroarch_smooth_image: Option<bool>,
+    retroarch_resume: Option<bool>,
 }
 
 impl Api {
@@ -155,6 +157,12 @@ fn dispatch(
                     })
                 }
             })
+        }
+
+        "prepare_game" => {
+            let game = find_game(engine, &arg::<String>(p, "id")?)?;
+            engine.ensure_game_ready(&game).map_err(loc)?;
+            Ok(json!({"ready": true}))
         }
 
         "refresh_game_metadata" => {
@@ -312,6 +320,12 @@ fn dispatch(
             if let Some(t) = u.theme {
                 engine.config.theme = t;
             }
+            if let Some(value) = u.retroarch_smooth_image {
+                engine.config.retroarch.smooth_image = value;
+            }
+            if let Some(value) = u.retroarch_resume {
+                engine.config.retroarch.resume = value;
+            }
             engine.save_config().map_err(loc).map(|_| Value::Null)
         }
 
@@ -436,11 +450,15 @@ mod tests {
             .iter()
             .find(|emulator| emulator["id"] == "retroarch")
             .unwrap();
-        assert_eq!(retroarch["automatic_install"], false);
-        assert!(retroarch["download_page"]
-            .as_str()
-            .unwrap()
-            .starts_with("https://"));
+        assert_eq!(retroarch["automatic_install"], cfg!(windows));
+        if cfg!(windows) {
+            assert!(retroarch["download_page"].is_null());
+        } else {
+            assert!(retroarch["download_page"]
+                .as_str()
+                .unwrap()
+                .starts_with("https://"));
+        }
         assert!(api
             .call("toggle_favorite", &json!({ "id": id }))
             .unwrap()

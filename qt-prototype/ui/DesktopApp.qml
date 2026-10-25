@@ -30,6 +30,7 @@ ApplicationWindow {
     property bool sidebarVisible: true
     property var metadataRequested: ({})
     property string metadataLoadingId: ""
+    property bool preparingGame: false
 
     // settings_overview contains the complete catalogue. Launcher.systems only
     // contains systems found in the game library, so it must not drive this list.
@@ -168,18 +169,17 @@ ApplicationWindow {
         }, automatic)
     }
     function launchGame() {
-        if (!currentGame) return
-        if (!gameInfo) {
-            inspectGame()
-            return
-        }
-        if (!gameInfo.ready) {
-            Launcher.openSettings(gameInfo.emulatorId
-                                  ? { emulator: gameInfo.emulatorId }
-                                  : { system: currentGame.system })
-            return
-        }
-        Launcher.play(currentGame.id)
+        if (!currentGame || preparingGame || pending) return
+        const id = currentGame.id
+        preparingGame = true
+        showNotice(t("Préparation du jeu : moteur, cœur et réglages. Le premier téléchargement peut prendre quelques minutes…", "Preparing engine, core and settings. The first download can take a few minutes…"))
+        call("prepare_game", {id: id}, function(ok) {
+            preparingGame = false
+            if (!ok) return
+            Launcher.reload()
+            loadOverview()
+            Launcher.play(id)
+        })
     }
     function selectSystem(id) {
         selectedSystem = id
@@ -355,7 +355,7 @@ ApplicationWindow {
             anchors.rightMargin: 10
             Label {
                 Layout.fillWidth: true
-                text: app.notice || (app.pending
+                text: app.preparingGame ? app.t("Préparation du jeu en cours : installation interne et vérification des composants…", "Preparing the game: installing and checking internal components…") : app.notice || (app.pending
                       ? app.t("Traitement en cours…", "Working…")
                       : app.t("Prêt", "Ready"))
                 elide: Text.ElideRight

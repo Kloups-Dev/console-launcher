@@ -971,13 +971,19 @@ impl Engine {
 
     /// Opens an emulator without a game, so the user can set it up.
     pub fn open_emulator(&self, id: &str) -> Result<(), EngineError> {
-        let (adapter, _, exe) = self.find_emulator(id)?;
+        let (adapter, cfg, exe) = self.find_emulator(id)?;
         let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
             id: id.into(),
             emulator: adapter.name().into(),
         })?;
         let mut cmd = std::process::Command::new(&exe);
         cmd.args(adapter.setup_args());
+        if id == "dolphin" && cfg.mode == EmulatorMode::Managed {
+            cmd.arg(format!(
+                "--user={}",
+                self.paths.generated_dir().join("dolphin-user").display()
+            ));
+        }
         if let Some(dir) = exe.parent() {
             cmd.current_dir(dir);
         }
@@ -1090,6 +1096,75 @@ impl Engine {
             return Err(EngineError::NoEmulator(game.system.info().name.into()));
         }
         self.find_emulator(&emulator)
+    }
+
+    /// Explicit first-launch preparation. Network operations never happen in previews.
+    pub fn ensure_game_ready(&mut self, game: &Game) -> Result<(), EngineError> {
+        let id = self.emulator_id_for(game.system);
+        if id == "retroarch" && game.system == SystemId::Psx {
+            let bios = self
+                .config
+                .bios_dir
+                .clone()
+                .unwrap_or_else(|| self.paths.root.join("bios"));
+            let serial = game.identity.serial.as_deref().unwrap_or("");
+            let required = if serial.starts_with("SLES") || serial.starts_with("SCES") {
+                "scph5502.bin"
+            } else if serial.starts_with("SLPS")
+                || serial.starts_with("SLPM")
+                || serial.starts_with("SCPS")
+            {
+                "scph5500.bin"
+            } else {
+                "scph5501.bin"
+            };
+            let present = std::fs::read_dir(&bios).ok().is_some_and(|files| {
+                files.flatten().any(|f| {
+                    f.file_name()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(required)
+                        && f.path().is_file()
+                })
+            });
+            if !present {
+                return Err(cl_adapters::AdapterError::NotFound(format!(
+                    "BIOS PlayStation requis : {required}. Ajoute ton BIOS dans {} ou choisis son dossier dans Réglages > Bibliothèque et stockage.", bios.display()
+                )).into());
+            }
+        }
+        let (_, cfg, mut exe) = self.find_emulator(&id)?;
+        if exe.is_none() {
+            // An explicitly selected external executable is never replaced.
+            if cfg.path.is_some() {
+                return Err(EngineError::EmulatorMissing {
+                    id: id.clone(),
+                    emulator: id,
+                });
+            }
+            self.install_emulator(&id)?;
+            exe = self.find_emulator(&id)?.2;
+        }
+        if id == "retroarch" {
+            let exe = exe.ok_or_else(|| EngineError::EmulatorMissing {
+                id: id.clone(),
+                emulator: id.clone(),
+            })?;
+            let core = cl_adapters::default_core(game.system).ok_or_else(|| {
+                cl_adapters::AdapterError::Unsupported("No Libretro core for this system".into())
+            })?;
+            if cl_adapters::find_core(&exe, core).is_none() {
+                if self.config.emulator(&id).mode != EmulatorMode::Managed {
+                    return Err(cl_adapters::AdapterError::Unsupported(
+                        "Cette installation externe ne contient pas le cœur requis. Choisis Installer RetroArch dans les réglages pour utiliser le moteur interne.".into()).into());
+                }
+                cl_updater::retroarch::ensure_core(
+                    core,
+                    exe.parent().unwrap(),
+                    &self.paths.emulators_dir(),
+                )?;
+            }
+        }
+        Ok(())
     }
 
     /// What a launch would do, without touching any file (for the interface).
@@ -1211,6 +1286,26 @@ impl Engine {
                 game.system
             )),
         })?;
+        if adapter.id() == "retroarch" && cfg.mode == EmulatorMode::Managed {
+            // Append user-visible image/resume choices to this session only.
+            use std::io::Write;
+            let file = generated.join("retroarch").join(format!("{}.cfg", game.id));
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(file)
+                .map_err(cl_adapters::AdapterError::from)?;
+            for (key, value) in [
+                ("video_smooth", self.config.retroarch.smooth_image),
+                ("savestate_auto_save", self.config.retroarch.resume),
+                ("savestate_auto_load", self.config.retroarch.resume),
+            ] {
+                if !locked.iter().any(|k| k == key) {
+                    writeln!(file, "{key} = \"{value}\"")
+                        .map_err(cl_adapters::AdapterError::from)?;
+                }
+            }
+            notes.push("F1 : menu en jeu, F2 : sauvegarde instantanée, F4 : chargement instantané, Échap : quitter proprement. La reprise instantanée reste dépendante du cœur et de sa version.".into());
+        }
         // The INI ledger may also have noticed a value changed by hand.
         for k in &plan.settings_report.kept_user_value {
             if !cfg.locked_keys.contains(k) {
