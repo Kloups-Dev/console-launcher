@@ -166,7 +166,19 @@ Item {
     }
     function pageImage() {
         const c = ov.config
+        const modes = ["responsive", "balanced", "quality"]
+        const mode = c.perf.experience || "balanced"
+        const labels = [t("Réactivité", "Responsiveness"),t("Équilibré — conseillé", "Balanced — recommended"),t("Qualité", "Quality")]
+        const index = Math.max(0,modes.indexOf(mode))
+        const cycle = d => prefs({experience:modes[(index+d+3)%3]})
+        const descriptions = [
+            t("Son plus réactif, résolution plafonnée à 1080p et synchronisation verticale désactivée. Possibles craquements ou déchirures de l’image.", "Shorter audio buffering, up to 1080p and VSync off. Audio crackling or tearing may occur."),
+            t("Compromis son/image : tampon audio modéré, synchronisation verticale et résolution jusqu’à 1440p selon le profil du jeu.", "Audio/video balance: moderate audio buffering, VSync and up to 1440p according to the game profile."),
+            t("Résolution jusqu’à 4K selon les résultats, synchronisation verticale et marge audio plus large. Demande davantage au PC.", "Up to 4K according to results, VSync and more audio buffering. More demanding on the PC.")
+        ]
         return {title:t("Image et fluidité", "Picture and smoothness"),items:[
+            row(t("Priorité son et image", "Audio/video priority"),labels[index],() => cycle(1),{left:()=>cycle(-1),right:()=>cycle(1),description:descriptions[index]}),
+            block(t("Ce que ce choix règle", "What this choice controls"),t("Préréglages son/image pour Dolphin et le moteur rétro interne. Les plafonds de résolution concernent les moteurs compatibles. Les FPS natifs du jeu sont conservés : un écran 144 Hz ne transforme pas automatiquement un jeu 30 FPS en 144 FPS.", "Audio/video presets for Dolphin and the internal retro engine. Resolution ceilings apply to compatible engines. Native game FPS are preserved; a 144 Hz display does not automatically turn a 30 FPS game into 144 FPS.")),
             block(t("Pour jouer simplement", "For straightforward play"),t("Garde les réglages automatiques pour commencer. Une image plus lissée change son apparence, pas la puissance de ton PC.", "Start with automatic settings. Smoothing changes the picture, not your PC's performance.")),
             row(t("Adapter les réglages au PC", "Adapt settings to this PC"),onOff(c.perf.auto_tune),() => prefs({autoTune:!c.perf.auto_tune}),{description:t("Le lanceur estime un profil puis peut l’ajuster avec les mesures disponibles.", "Estimate a profile and adjust it using available measurements.")}),
             row(t("Image des jeux rétro", "Retro game picture"),c.retroarch.smooth_image ? t("Lissée", "Smooth") : t("Nette", "Sharp"),() => prefs({retroarchSmoothImage:!c.retroarch.smooth_image}),{description:t("Moteur rétro interne uniquement. « Nette » garde les pixels visibles ; « Lissée » adoucit les contours.", "Internal retro engine only. Sharp preserves pixels; smooth softens edges.")}),

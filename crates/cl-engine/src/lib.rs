@@ -17,7 +17,7 @@ use cl_core::watch::SettingsWatch;
 use cl_core::{Game, SystemId, SystemInfo};
 use cl_hwprobe::{GpuKind, HardwareReport};
 use cl_perf::estimate::{estimate, GpuClass, HwSummary, LadderKind};
-use cl_perf::frametime::{analyse, parse_file, verdict, FrameStats, Verdict};
+use cl_perf::frametime::{analyse, analyse_with_target, parse_file, verdict, FrameStats, Verdict};
 use cl_perf::store::{GameTuning, ProfileStore, RunRecord};
 use cl_perf::tuner::TuneState;
 use cl_session::{CaptureRequest, SessionRecord, SessionResult};
@@ -27,6 +27,30 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Expected presentations only where the adapter/core cadence is known.
+fn known_output_rate(game: &Game, adapter: &str) -> Option<f64> {
+    if adapter == "dolphin" {
+        match game
+            .identity
+            .serial
+            .as_deref()?
+            .as_bytes()
+            .get(3)?
+            .to_ascii_uppercase()
+        {
+            b'E' | b'J' | b'K' | b'W' => Some(60.0),
+            // PAL titles can select 50 Hz or 60 Hz at runtime: do not guess.
+            _ => None,
+        }
+    } else if adapter == "retroarch"
+        && matches!(game.system, SystemId::Gb | SystemId::Gbc | SystemId::Gba)
+    {
+        Some(59.7275)
+    } else {
+        None
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -1052,8 +1076,22 @@ impl Engine {
     /// Loads the game's tuning, or creates it from the estimate. A hardware
     /// change restarts the search from a fresh estimate.
     pub fn tuning(&mut self, game: &Game, adapter: &dyn EmulatorAdapter) -> GameTuning {
-        let ladder_len = adapter.quality_ladder(game.system).len();
+        let ladder_len = if adapter.gpu_bound_ladder() {
+            adapter.quality_ladder(game.system).len().min(
+                self.config
+                    .perf
+                    .experience
+                    .resolution_ceiling()
+                    .saturating_add(1),
+            )
+        } else {
+            adapter.quality_ladder(game.system).len()
+        };
         let mut fingerprint = self.hw_fingerprint();
+        fingerprint.push_str(&format!(
+            "|experience-{}",
+            self.config.perf.experience.key()
+        ));
         let tuning_revision = adapter.tuning_revision();
         if tuning_revision > 0 {
             fingerprint.push_str(&format!("|{}-policy-{tuning_revision}", adapter.id()));
@@ -1175,7 +1213,8 @@ impl Engine {
             emulator: adapter.name().into(),
         })?;
         let tuning = self.tuning(game, adapter.as_ref());
-        let ladder = adapter.quality_ladder(game.system);
+        let mut ladder = adapter.quality_ladder(game.system);
+        ladder.truncate(tuning.state.max + 1);
         let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
         let (measure, mut notes) = self.measure_decision(&tuning);
         let lang = self.config.language.clone();
@@ -1248,8 +1287,13 @@ impl Engine {
             emulator: adapter.name().into(),
         })?;
         let tuning = self.tuning(game, adapter.as_ref());
-        let ladder = adapter.quality_ladder(game.system);
-        let step = &ladder[tuning.state.current.min(ladder.len() - 1)];
+        let mut ladder = adapter.quality_ladder(game.system);
+        ladder.truncate(tuning.state.max + 1);
+        let mut step = ladder[tuning.state.current.min(ladder.len() - 1)].clone();
+        step.settings.extend(cl_adapters::experience::settings(
+            adapter.id(),
+            self.config.perf.experience,
+        ));
         let (measure, mut notes) = self.measure_decision(&tuning);
         let generated = self.paths.generated_dir();
 
@@ -1274,7 +1318,7 @@ impl Engine {
         let mut plan = adapter.prepare(&LaunchContext {
             exe: &exe,
             game,
-            step,
+            step: &step,
             api: tuning.api,
             mode: cfg.mode,
             generated_dir: &generated,
@@ -1413,14 +1457,18 @@ impl Engine {
 
         let mut stats = None;
         let mut result_verdict = None;
+        let known_rate = known_output_rate(game, &prepared.emulator);
         if let Some(file) = &session.capture_file {
-            match parse_file(file)
+            match parse_file(file).map_err(|e| e.to_string()).and_then(|ft| {
+                match known_rate {
+                    Some(rate) => analyse_with_target(&ft, rate),
+                    None => analyse(&ft),
+                }
                 .map_err(|e| e.to_string())
-                .and_then(|ft| analyse(&ft).map_err(|e| e.to_string()))
-            {
+            }) {
                 Ok(s) => {
                     let v = verdict(&s);
-                    if session_can_update_tuning {
+                    if session_can_update_tuning && known_rate.is_some() {
                         tuning.push_run(RunRecord {
                             at: now(),
                             step: prepared.step,
@@ -1428,9 +1476,9 @@ impl Engine {
                             verdict: v,
                         });
                     } else {
-                        notes.push(
-                            "Measurement shown but not used for tuning: emulator failed".into(),
-                        );
+                        notes.push(if !session_can_update_tuning {
+                            "Measurement shown but not used for tuning: emulator failed"
+                        } else { "Cadence native non confirmée : les FPS sont affichés mais ne modifient pas automatiquement la qualité." }.into());
                     }
                     stats = Some(s);
                     result_verdict = Some(v);
@@ -1595,11 +1643,11 @@ mod tests {
         assert_eq!(p.step_label, "1440p");
         assert!(!p.measure);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
         assert!(p
             .plan
             .args
-            .contains(&"--config=GFX.Settings.ShaderCompilationMode=2".into()));
+            .contains(&"--config=Graphics.Settings.ShaderCompilationMode=2".into()));
         assert!(!p.plan.args.iter().any(|arg| arg.contains("CPUThread")));
 
         let t = engine.set_step(&games[0], 1).unwrap();
@@ -1639,7 +1687,7 @@ mod tests {
         let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
         assert_eq!(tuning.state.current, 3);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-1"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-2"));
     }
 
     #[test]

@@ -46,6 +46,7 @@ struct Preferences {
     theme: Option<String>,
     retroarch_smooth_image: Option<bool>,
     retroarch_resume: Option<bool>,
+    experience: Option<cl_core::config::ExperienceMode>,
 }
 
 impl Api {
@@ -305,6 +306,9 @@ fn dispatch(
 
         "update_preferences" => {
             let u: Preferences = serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
+            if let Some(mode) = u.experience {
+                engine.config.perf.experience = mode;
+            }
             if let Some(v) = u.auto_tune {
                 engine.config.perf.auto_tune = v;
             }

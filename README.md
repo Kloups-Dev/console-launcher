@@ -233,3 +233,18 @@ firmware, keys or circumvention tools. Users are responsible for complying
 with the laws and licences applicable to their games, firmware and emulators.
 
 The project's final licence has not been selected yet.
+
+## Audio/video priorities
+
+Settings > Picture and smoothness offers Responsiveness, Balanced (default),
+and Quality. Dolphin uses audio buffers of 24/40/80 ms and RetroArch targets
+32/48/64 ms. These are buffering settings, not measured end-to-end latency.
+Responsiveness disables VSync; Balanced/Quality enable it. Compatible 3D
+resolution ladders are capped at 1080p/1440p/unrestricted respectively.
+Dolphin keeps native speed and does not skip drawing; its shader cache and
+precompilation reduce shader interruptions. No universal game patches or
+forced FPS increases are applied. Manual emulator settings remain protected.
+Automatic quality learning requires a known output cadence (currently NTSC
+Dolphin and Game Boy-family RetroArch). Unknown/PAL switchable cadences keep
+metrics without learning from an assumed 50/60 Hz target. Changing priority
+or Dolphin policy invalidates old automatic measurements.

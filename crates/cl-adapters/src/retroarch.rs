@@ -173,6 +173,10 @@ impl EmulatorAdapter for RetroArch {
     fn managed_keys(&self, system: SystemId) -> Vec<String> {
         let mut keys = crate::ladder_keys(&self.quality_ladder(system));
         keys.push(DRIVER_KEY.into());
+        keys.extend(
+            crate::experience::settings("retroarch", cl_core::config::ExperienceMode::Balanced)
+                .into_keys(),
+        );
         keys
     }
 

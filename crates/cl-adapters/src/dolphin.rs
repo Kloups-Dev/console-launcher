@@ -19,6 +19,13 @@ use std::path::{Path, PathBuf};
 
 const BACKEND_KEY: &str = "Dolphin.Core.GFXBackend";
 
+/// Internal ledger names use GFX.ini; Dolphin's CLI system name is Graphics.
+fn cli_key(key: &str) -> String {
+    key.strip_prefix("GFX.")
+        .map(|tail| format!("Graphics.{tail}"))
+        .unwrap_or_else(|| key.into())
+}
+
 /// Folder holding Dolphin.ini and GFX.ini for this install.
 fn config_dir(exe: &Path, mode: EmulatorMode, generated_dir: &Path) -> Option<PathBuf> {
     if mode == EmulatorMode::Managed {
@@ -119,9 +126,10 @@ impl EmulatorAdapter for Dolphin {
     }
 
     fn tuning_revision(&self) -> u32 {
-        // Revision 1 removes Skip Drawing and forced Dual Core, and chooses
+        // Revision 2 corrects the Graphics CLI namespace and audio/video presets.
+        // The policy removes Skip Drawing and forced Dual Core, and chooses
         // the initial graphics API with Dolphin's vendor guidance.
-        1
+        2
     }
     fn exe_names(&self) -> Vec<String> {
         let names: &[&str] = if cfg!(windows) {
@@ -170,6 +178,10 @@ impl EmulatorAdapter for Dolphin {
     fn managed_keys(&self, system: SystemId) -> Vec<String> {
         let mut keys = crate::ladder_keys(&self.quality_ladder(system));
         keys.push(BACKEND_KEY.into());
+        keys.extend(
+            crate::experience::settings("dolphin", cl_core::config::ExperienceMode::Balanced)
+                .into_keys(),
+        );
         keys
     }
 
@@ -204,7 +216,10 @@ impl EmulatorAdapter for Dolphin {
     /// Dolphin skips duplicate frames by default; measured sessions present
     /// all of them. Key name to confirm on the Dolphin version in use.
     fn measurement_args(&self) -> Vec<String> {
-        vec!["--config=GFX.Settings.SkipPresentingDuplicateFrames=False".into()]
+        vec![
+            "--config=Graphics.Hacks.SkipDuplicateXFBs=False".into(),
+            "--config=Graphics.Hacks.VISkip=False".into(),
+        ]
     }
 
     fn prepare(&self, ctx: &LaunchContext) -> Result<LaunchPlan, AdapterError> {
@@ -233,7 +248,7 @@ impl EmulatorAdapter for Dolphin {
             if ctx.locked_keys.iter().any(|l| l == k) {
                 plan.settings_report.kept_user_value.push(k.clone());
             } else {
-                plan.args.push(format!("--config={k}={v}"));
+                plan.args.push(format!("--config={}={v}", cli_key(k)));
                 plan.settings_report.applied.push(k.clone());
             }
         }
@@ -344,7 +359,7 @@ mod tests {
         assert_eq!(plan.args.first().unwrap(), "--batch");
         assert!(plan
             .args
-            .contains(&"--config=GFX.Settings.InternalResolution=3".to_string()));
+            .contains(&"--config=Graphics.Settings.InternalResolution=3".to_string()));
         assert!(plan
             .args
             .contains(&"--config=Dolphin.Core.GFXBackend=Vulkan".to_string()));

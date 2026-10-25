@@ -21,6 +21,7 @@
 //! ([`profile`]) or added by the user as custom emulators.
 
 mod dolphin;
+pub mod experience;
 mod pcsx2;
 pub mod profile;
 mod retroarch;
