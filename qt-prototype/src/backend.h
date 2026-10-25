@@ -14,6 +14,7 @@
 #include <QVariant>
 
 #include "engine.h"
+#include "perfmonitor.h"
 
 class QQmlApplicationEngine;
 class QQuickWindow;
@@ -27,6 +28,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
     Q_PROPERTY(bool settingsOpen READ settingsOpen WRITE setSettingsOpen NOTIFY settingsOpenChanged)
+    Q_PROPERTY(bool controlCapture READ controlCapture WRITE setControlCapture NOTIFY controlCaptureChanged)
+    Q_PROPERTY(PerfMonitor *performance READ performance CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
@@ -45,12 +48,16 @@ public:
     QString lastError() const { return m_error; }
     bool settingsOpen() const { return m_settingsOpen; }
     void setSettingsOpen(bool open);
+    bool controlCapture() const { return m_controlCapture; }
+    void setControlCapture(bool capture);
     QString version() const;
+    PerfMonitor *performance() { return &m_performance; }
 
     /// Called by the gamepad and keyboard filters; forwarded to the interface,
     /// or to the settings panel while it is open.
     void emitNav(const QString &action);
     void setPadName(const QString &name);
+    void emitControlInput(const QVariantMap &event);
 
     Q_INVOKABLE void reload();
     Q_INVOKABLE void requestInfo(const QString &gameId);
@@ -77,8 +84,12 @@ Q_SIGNALS:
     void languageChanged();
     void errorChanged();
     void settingsOpenChanged();
+    void controlCaptureChanged();
     void nav(const QString &action);
     void settingsNav(const QString &action);
+    /// Focused-window input for the interactive controller tester. It carries
+    /// normalized control names and values, never typed text.
+    void controlInput(const QVariantMap &event);
     void settingsRequested(const QVariant &target);
     void gameInfoReady(const QString &gameId, const QVariantMap &info);
     void favoriteChanged(const QString &gameId, bool on);
@@ -94,12 +105,14 @@ private:
     void setError(const QString &e);
     void applyConfig(const QVariantMap &config);
 
+    PerfMonitor m_performance;
     Engine m_engine;
     QQmlApplicationEngine *m_qml = nullptr;
     QVariantList m_systems;
     QVariantList m_games;
     bool m_running = false;
     bool m_settingsOpen = false;
+    bool m_controlCapture = false;
     QString m_padName;
     QString m_language = QStringLiteral("fr");
     QString m_error;

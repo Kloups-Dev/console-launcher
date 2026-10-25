@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ConsoleLauncher VERSION 0.3.1 LANGUAGES CXX)
+project(ConsoleLauncher VERSION 0.3.2 LANGUAGES CXX)
 
 # Console Launcher — C++17 + Qt Quick interface. The functional QML shell is
 # compiled into the executable; controllers go through SDL2, and the Rust
@@ -69,6 +69,9 @@ qt_add_executable(console-launcher-qt
     src/gamepad.h
     src/keyfilter.cpp
     src/keyfilter.h
+    src/perfmonitor.cpp
+    src/perfmonitor.h
+    src/framestream.h
 )
 if(NOT CL_ENGINE_PREBUILT_DIR)
     add_dependencies(console-launcher-qt cl_engine_build)
@@ -82,11 +85,19 @@ qt_add_qml_module(console-launcher-qt
         ui/DesktopApp.qml
         ui/SettingsPanel.qml
         ui/SettingsRow.qml
+        ui/ControlVisualizer.qml
+        ui/ControlPad.qml
+        ui/XboxControlPad.qml
+        ui/GameCubeControlPad.qml
+        ui/PS2ControlPad.qml
+        ui/PS5ControlPad.qml
+        ui/PerformanceOverlay.qml
 )
 
 if(WIN32)
     set_target_properties(console-launcher-qt PROPERTIES WIN32_EXECUTABLE ON)
     target_sources(console-launcher-qt PRIVATE src/app.rc)
+    target_link_libraries(console-launcher-qt PRIVATE user32 psapi)
 else()
     # The engine library sits next to the executable.
     set_target_properties(console-launcher-qt PROPERTIES
@@ -107,3 +118,18 @@ target_link_libraries(console-launcher-qt PRIVATE
 add_custom_command(TARGET console-launcher-qt POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CL_ENGINE_LIB} $<TARGET_FILE_DIR:console-launcher-qt>)
+
+option(CL_PERFORMANCE_TESTS "Build rolling frame stream tests" OFF)
+if(CL_PERFORMANCE_TESTS)
+    enable_testing()
+    add_executable(performance-stream-tests tests/perfstream_test.cpp)
+    target_include_directories(performance-stream-tests PRIVATE src)
+    target_link_libraries(performance-stream-tests PRIVATE Qt6::Core)
+    add_test(NAME performance-stream COMMAND performance-stream-tests)
+    if(WIN32)
+        add_executable(performance-monitor-tests tests/perfmonitor_test.cpp src/perfmonitor.cpp src/perfmonitor.h src/framestream.h)
+        target_include_directories(performance-monitor-tests PRIVATE src)
+        target_link_libraries(performance-monitor-tests PRIVATE Qt6::Gui user32 psapi)
+        add_test(NAME performance-monitor COMMAND performance-monitor-tests)
+    endif()
+endif()

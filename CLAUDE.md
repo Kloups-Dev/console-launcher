@@ -1,1 +1,1 @@
-Lire @README.md au début de chaque nouvelle phase de code : il contient l'unique contexte et le fonctionnement du suivi partagé.
+Lire @README.md et @ROADMAP.md au début de chaque nouvelle phase de code. Le README décrit l'état réel ; la roadmap décrit la cible future. Ne jamais confondre les deux.

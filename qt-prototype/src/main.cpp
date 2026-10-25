@@ -105,6 +105,7 @@ int main(int argc, char *argv[]) {
     app.installEventFilter(&keys);
     QObject::connect(&keys, &KeyFilter::nav, &backend, &Backend::emitNav);
     QObject::connect(&keys, &KeyFilter::fullscreen, &backend, &Backend::toggleFullscreen);
+    QObject::connect(&keys, &KeyFilter::inputEvent, &backend, &Backend::emitControlInput);
 
     QQmlApplicationEngine engine;
     QStringList qmlErrors;
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
     // A registered singleton is visible only to the trusted, compiled QML
     // module. Context properties are intentionally avoided: they are invisible
     // to static tooling and would become a broad ambient API.
+    qmlRegisterUncreatableType<PerfMonitor>("ConsoleLauncher", 1, 0, "PerformanceMonitor", "Owned by the launcher");
     qmlRegisterSingletonInstance("ConsoleLauncher", 1, 0, "Launcher", &backend);
     backend.setQmlEngine(&engine);
     qInfo("loading built-in interface");
@@ -137,6 +139,7 @@ int main(int argc, char *argv[]) {
     Gamepad pad;
     QObject::connect(&pad, &Gamepad::nav, &backend, &Backend::emitNav);
     QObject::connect(&pad, &Gamepad::padName, &backend, &Backend::setPadName);
+    QObject::connect(&pad, &Gamepad::inputEvent, &backend, &Backend::emitControlInput);
     QObject::connect(&backend, &Backend::sessionActive, &pad, &Gamepad::setPaused);
     pad.start();
 

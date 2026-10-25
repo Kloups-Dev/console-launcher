@@ -4,7 +4,7 @@ All notable changes are listed here, newest first. Format based on [Keep a Chang
 
 Toutes les modifications notables sont listées ici, de la plus récente à la plus ancienne.
 
-## [Unreleased]
+## [0.3.2] — 2026-10-24 — Library, metadata and desktop foundation
 
 ### English
 
