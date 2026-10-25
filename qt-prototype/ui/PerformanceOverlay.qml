@@ -42,7 +42,9 @@ Window {
     }
     function problems() {
         let lines = []
-        if (!stats.measured) lines.push("FPS non mesurés : vérifier le collecteur et son autorisation Windows.")
+        if (!stats.measured) lines.push(stats.collectorError
+            ? "Le collecteur signale un problème : voir le détail en bas du panneau."
+            : "En attente d’images récentes : démarrage, pause ou jeu en arrière-plan possibles. Voir l’état du collecteur en bas.")
         if (stats.measured && stats.spikes > 0 && stats.maxMs > stats.medianMs * 2) lines.push("Pics de durée d’image : saccades possibles sur les 2 dernières secondes.")
         if (stats.gpuProcessBusy >= 95) lines.push("Moteur GPU de l’émulateur très chargé : la résolution est une piste à examiner.")
         if (stats.systemRamPercent >= 90) lines.push("Mémoire du PC presque pleine.")

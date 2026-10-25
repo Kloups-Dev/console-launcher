@@ -37,8 +37,16 @@ PerfMonitor::PerfMonitor(QObject *parent)
     connect(&m_timer, &QTimer::timeout, this, &PerfMonitor::poll);
     connect(&m_capture, &QProcess::readyReadStandardOutput, this, &PerfMonitor::readFrames);
     connect(&m_capture, &QProcess::readyReadStandardError, this, [this] {
-        const QString error = QString::fromUtf8(m_capture.readAllStandardError()).trimmed().right(600);
-        if (!error.isEmpty()) { m_metrics["collectorError"] = error; Q_EMIT changed(); }
+        m_collectorDiagnostic = (m_collectorDiagnostic + QString::fromUtf8(m_capture.readAllStandardError())).right(1600);
+        const QString diagnostic = m_collectorDiagnostic.trimmed();
+        const bool standardUserNotice = diagnostic.startsWith("warning: PresentMon requires elevated privilege")
+            && !diagnostic.contains("error:", Qt::CaseInsensitive)
+            && !diagnostic.contains("failed", Qt::CaseInsensitive);
+        // This notice only limits queries for other accounts/short-lived
+        // processes. It does not mean that the PID-based trace was denied.
+        if (!diagnostic.isEmpty() && !standardUserNotice)
+            m_metrics["collectorError"] = diagnostic.right(600);
+        Q_EMIT changed();
     });
     connect(&m_capture, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_status = tr("Mesure indisponible : vérifier PresentMon et son autorisation dans les réglages.");
@@ -317,6 +325,8 @@ void PerfMonitor::startCapture() {
     }
     if (exe.isEmpty()) { m_status = tr("PresentMon absent : FPS non mesurés."); return; }
     m_capture.setProgram(exe);
+    m_collectorDiagnostic.clear();
+    m_metrics.remove("collectorError");
     m_capture.setArguments({"--process_id", QString::number(m_pid), "--output_stdout", "--v1_metrics",
                            "--no_track_input", "--no_console_stats", "--terminate_on_proc_exit",
                            "--session_name", "ConsoleLauncherLive-" + QString::number(QCoreApplication::applicationPid())});

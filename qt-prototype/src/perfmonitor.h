@@ -65,6 +65,7 @@ private:
     QVariantMap m_context;
     QVariantMap m_metrics;
     QString m_status, m_presentmon;
+    QString m_collectorDiagnostic;
     bool m_active = false, m_enabled = true, m_display = false;
     bool m_fallbackRegistered = false;
     bool m_registered = false, m_attempted = false;
