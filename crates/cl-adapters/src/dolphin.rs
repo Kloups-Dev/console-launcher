@@ -239,9 +239,6 @@ impl EmulatorAdapter for Dolphin {
         }
         if let Some(overrides) = ctx.controller_overrides.filter(|m| !m.is_empty()) {
             // InputConfig reads GCPadNew.ini; --config does not load pad bindings.
-            let dir = config_dir(ctx.exe, ctx.mode, ctx.generated_dir).ok_or_else(|| {
-                AdapterError::NotFound("Dolphin controller config directory".into())
-            })?;
             let mut validated = Vec::new();
             for (key, value) in overrides {
                 let (section, entry) = key.split_once('/').ok_or_else(|| {
@@ -263,6 +260,9 @@ impl EmulatorAdapter for Dolphin {
                     value.strip_prefix("Keyboard/").unwrap_or(value),
                 ));
             }
+            let dir = config_dir(ctx.exe, ctx.mode, ctx.generated_dir).ok_or_else(|| {
+                AdapterError::NotFound("Dolphin controller config directory".into())
+            })?;
             std::fs::create_dir_all(&dir)?;
             let file = dir.join("GCPadNew.ini");
             let previous = match std::fs::read_to_string(&file) {
