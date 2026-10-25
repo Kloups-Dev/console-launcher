@@ -95,7 +95,7 @@ Item {
         if (!visible) return
         // Escape must work regardless of the selected input device.
         if (event.source === "keyboard" && event.control === "escape" && Number(event.value) > 0) {
-            close(); return
+            Qt.callLater(root.close); return
         }
         if ((keyboard && event.source !== "keyboard")
             || (mouse && event.source !== "mouse")
