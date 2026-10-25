@@ -45,7 +45,7 @@ Item {
     readonly property string no: "<font color='#ff8a70'>✕</font>"
     function small(s) { return "<font color='#8a93a6'><small>" + s + "</small></font>"; }
     function code(s) { return "<tt>" + esc(s) + "</tt>"; }
-    function onOff(v) { return v ? "ON" : "OFF"; }
+    function onOff(v) { return v ? t("Activé", "On") : t("Désactivé", "Off"); }
 
     function row(label, value, action, extra) {
         const r = { type: "row", label: label, value: value, action: action };
@@ -118,55 +118,120 @@ Item {
     function pickFolder(title, done) { pickDone = done; folderDialog.title = title; folderDialog.open(); }
 
     // ---- Pages ----
+
+    readonly property var sections: [
+        {id:"folders", fr:"Jeux et dossiers", en:"Games and folders", descriptionFr:"Ajouter des jeux et choisir où les chercher.", descriptionEn:"Add games and choose which folders to scan."},
+        {id:"controls", fr:"Manettes et touches", en:"Controllers and keys", descriptionFr:"Vérifier ta manette et comprendre les commandes en jeu.", descriptionEn:"Check your controller and game controls."},
+        {id:"image", fr:"Image et fluidité", en:"Picture and smoothness", descriptionFr:"Choisir une image nette ou lissée et les réglages automatiques.", descriptionEn:"Choose sharp or smooth image and automatic settings."},
+        {id:"saves", fr:"Sauvegardes et reprise", en:"Saves and resume", descriptionFr:"Garder ta progression et choisir la reprise instantanée.", descriptionEn:"Keep your progress and choose instant resume."},
+        {id:"systems", fr:"Consoles et installation", en:"Systems and installation", descriptionFr:"Voir les consoles et les moteurs qui les font fonctionner.", descriptionEn:"Browse systems and their emulation engines."},
+        {id:"general", fr:"Application", en:"Application", descriptionFr:"Langue, affichage et informations du logiciel.", descriptionEn:"Language, display and application information."},
+        {id:"help", fr:"Aide et dépannage", en:"Help and troubleshooting", descriptionFr:"Une manette muette, un jeu lent ou une sauvegarde introuvable ?", descriptionEn:"Controller not responding, slow game or missing save?"},
+        {id:"advanced", fr:"Options avancées", en:"Advanced options", descriptionFr:"Émulateurs externes, BIOS, matériel et diagnostic.", descriptionEn:"External emulators, BIOS, hardware and diagnostics."}
+    ]
+    function switchSection(id) {
+        if (busy) return
+        stack = [{id:"main",index:0},{id:id,index:0}]
+        confirmRemove = null
+        render()
+        list.positionViewAtBeginning()
+    }
+    function activeSection() {
+        if (stack.length < 2) return ""
+        const id = stack[1].id
+        if (["performance","diagnostics","emulators","emulator","storage","capture","customSystems"].indexOf(id) >= 0) return "advanced"
+        if (id === "system") return "systems"
+        return id
+    }
+    function dataFolder() {
+        const path = String(ov.dataDir).replace(/\\/g, "/").replace(/^\/\/\?\//, "")
+        if (!Qt.openUrlExternally("file:///" + path))
+            say(t("Impossible d’ouvrir ce dossier.", "Unable to open this folder."))
+    }
     function pageMain() {
-        const c = ov.config;
-        return {
-            title: t("Réglages de l’application", "Application settings"),
-            items: [
-                block(t("Application", "Application"), t(
-                    "Les réglages de cette partie s'appliquent au launcher entier.",
-                    "Settings in this section apply to the whole launcher.")),
-                row(t("Général", "General"), fr ? "Français" : "English", () => push("general")),
-                row(t("Contrôles", "Controls"), Launcher.padName || t("Clavier", "Keyboard"), () => push("controls")),
-                row(t("Bibliothèque et stockage", "Library and storage"), String(c.rom_dirs.length + c.emulator_dirs.length), () => push("folders")),
-                row(t("Performance et machine", "Performance and hardware"), onOff(c.perf.auto_tune), () => push("performance")),
-                block(t("Assistance", "Support"), ""),
-                row(t("État et diagnostic", "Status and diagnostics"), Launcher.lastError ? no : yes, () => push("diagnostics")),
-                row(t("Fermer", "Close"), "B", close),
-                block("", small("Console Launcher " + Launcher.version + " · " + esc(ov.dataDir)))
-            ]
-        };
+        return {title:t("Paramètres", "Settings"),items:[
+            block(t("Que souhaites-tu régler ?", "What would you like to change?"),
+                  t("Choisis une rubrique à gauche. Les changements sont enregistrés dès que tu les sélectionnes.", "Choose a section on the left. Changes are saved as soon as you select them.")),
+            ...sections.map(s => row(t(s.fr,s.en), "›", () => switchSection(s.id), {description:t(s.descriptionFr,s.descriptionEn)}))
+        ]}
     }
-
     function pageGeneral() {
-        return {
-            title: t("Général", "General"),
-            items: [
-                block(t("Application", "Application"), t(
-                    "Ces choix concernent toutes les consoles et tous les émulateurs.",
-                    "These choices affect every console and emulator.")),
-                row(t("Langue", "Language"), fr ? "Français" : "English", () => prefs({ language: fr ? "en" : "fr" })),
-                row(t("Plein écran", "Fullscreen"), "F11", () => Launcher.toggleFullscreen()),
-                row(t("Contrôles du launcher", "Launcher controls"), Launcher.padName || t("Clavier", "Keyboard"), () => push("controls")),
-                block(t("Moteur rétro intégré", "Integrated retro engine"), t(
-                    "Moteur RetroArch interne : installation et choix du cœur au lancement. F1 : menu en jeu · F2 : sauvegarde instantanée · F4 : chargement · Échap : quitter. Les sauvegardes du jeu restent séparées de la reprise instantanée.",
-                    "Internal RetroArch engine: engine and core prepared at launch. F1: in-game menu · F2: save state · F4: load state · Escape: quit. In-game saves remain separate from instant resume.")),
-                row(t("Image rétro lissée", "Smooth retro image"), onOff(c.retroarch.smooth_image), () => prefs({ retroarchSmoothImage: !c.retroarch.smooth_image })),
-                row(t("Reprise instantanée à la fermeture", "Resume after closing"), onOff(c.retroarch.resume), () => prefs({ retroarchResume: !c.retroarch.resume })),
-                block("", small(t("Reprise désactivée par défaut : sa compatibilité dépend du cœur et de sa version. Sauvegarde aussi depuis le jeu. Les options avancées restent accessibles avec F1.", "Resume is off by default: compatibility depends on the core and version. Also save inside the game. Advanced options remain available with F1."))),
-                row(t("Dossiers et bibliothèque", "Folders and library"), "›", () => push("folders")),
-                row(t("Quitter le launcher", "Quit the launcher"), "⏻", () => Launcher.quit()),
-                backRow()
-            ]
-        };
+        return {title:t("Application", "Application"),items:[
+            block(t("Personnaliser le logiciel", "Personalise the application"),t("Ces choix concernent le lanceur, pas les commandes ni les sauvegardes des jeux.", "These choices affect the launcher, not game controls or saves.")),
+            row(t("Langue", "Language"),fr ? "Français" : "English",() => prefs({language:fr ? "en" : "fr"})),
+            row(t("Passer en plein écran / en fenêtre", "Switch fullscreen / windowed"),"F11",() => Launcher.toggleFullscreen()),
+            block(t("Version du logiciel", "Application version"),"Console Launcher " + esc(Launcher.version)),
+            backRow()
+        ]}
     }
-
+    function pageImage() {
+        const c = ov.config
+        return {title:t("Image et fluidité", "Picture and smoothness"),items:[
+            block(t("Pour jouer simplement", "For straightforward play"),t("Garde les réglages automatiques pour commencer. Une image plus lissée change son apparence, pas la puissance de ton PC.", "Start with automatic settings. Smoothing changes the picture, not your PC's performance.")),
+            row(t("Adapter les réglages au PC", "Adapt settings to this PC"),onOff(c.perf.auto_tune),() => prefs({autoTune:!c.perf.auto_tune}),{description:t("Le lanceur estime un profil puis peut l’ajuster avec les mesures disponibles.", "Estimate a profile and adjust it using available measurements.")}),
+            row(t("Image des jeux rétro", "Retro game picture"),c.retroarch.smooth_image ? t("Lissée", "Smooth") : t("Nette", "Sharp"),() => prefs({retroarchSmoothImage:!c.retroarch.smooth_image}),{description:t("Moteur rétro interne uniquement. « Nette » garde les pixels visibles ; « Lissée » adoucit les contours.", "Internal retro engine only. Sharp preserves pixels; smooth softens edges.")}),
+            block(t("Son et image en jeu", "In-game audio and video"),t("Le moteur rétro utilise une base de synchronisation son/image. Les réglages propres à une console restent gérés par son moteur.", "The retro engine uses synchronised audio/video defaults. Console-specific settings remain managed by its engine.")),
+            row(t("Afficher les réglages techniques", "Show technical settings"),"›",() => push("performance"),{description:t("Mesures de fluidité, informations du PC et panneau en jeu.", "Frame measurements, PC information and in-game panel.")}),
+            backRow()
+        ]}
+    }
+    function pageSaves() {
+        const c = ov.config
+        return {title:t("Sauvegardes et reprise", "Saves and resume"),items:[
+            block(t("1. Ta progression dans le jeu", "1. Your in-game progress"),t("Sauvegarde quand le jeu le propose, comme sur la console d’origine. Revenir au menu de départ au prochain lancement ne signifie pas que cette progression est perdue.", "Save when the game offers it, as on the original console. Starting at the title screen next time does not mean your progress is lost.")),
+            block(t("2. Reprendre exactement au même endroit", "2. Resume at the same point"),t("La reprise instantanée conserve l’état du jeu à la fermeture. Elle concerne le moteur rétro interne et dépend du cœur utilisé. Elle ne remplace pas une sauvegarde faite dans le jeu.", "Instant resume keeps the game state when closing. It applies to the internal retro engine and depends on the core. It does not replace in-game saves.")),
+            row(t("Reprendre les jeux rétro à la réouverture", "Resume retro games on reopening"),onOff(c.retroarch.resume),() => prefs({retroarchResume:!c.retroarch.resume}),{description:t("Option du moteur rétro. Elle n’active pas la reprise de Mario dans Dolphin.", "Retro engine option. This does not enable Mario resume in Dolphin.")}),
+            block(t("Raccourcis du moteur rétro", "Retro engine shortcuts"),t("F2 : créer une sauvegarde instantanée · F4 : la recharger · Échap : quitter proprement.", "F2: create a save state · F4: load it · Escape: quit cleanly.")),
+            row(t("Ouvrir le dossier des données", "Open application data folder"),"↗",dataFolder,{description:t("Les sous-dossiers saves et states contiennent les sauvegardes rétro. Dolphin utilise generated/dolphin-user/GC.", "The saves and states subfolders contain retro saves. Dolphin uses generated/dolphin-user/GC.")}),
+            block(t("À conserver", "Keep these files"),t("Les sauvegardes sont séparées des versions du moteur. Les émulateurs installés manuellement peuvent utiliser un autre dossier.", "Saves are separate from engine versions. Manually installed emulators may use a different folder.")),
+            backRow()
+        ]}
+    }
+    function pageHelp() {
+        return {title:t("Aide et dépannage", "Help and troubleshooting"),items:[
+            row(t("Ma manette ne répond pas", "My controller does not respond"),"›",() => push("controls"),{description:t("Tester la détection et distinguer le testeur des commandes du jeu.", "Check detection and distinguish tester input from game controls.")}),
+            row(t("Je ne retrouve pas ma sauvegarde", "I cannot find my save"),"›",() => push("saves"),{description:t("Comprendre la progression du jeu et la reprise instantanée.", "Understand in-game progress and save-state resume.")}),
+            row(t("Le jeu est lent ou l’image saccade", "The game is slow or stutters"),"›",() => push("image")),
+            row(t("Un jeu demande un BIOS ou un émulateur", "A game asks for a BIOS or emulator"),"›",() => push("systems")),
+            row(t("Voir les erreurs et le diagnostic", "View errors and diagnostics"),"›",() => push("diagnostics")),
+            backRow()
+        ]}
+    }
+    function pageAdvanced() {
+        return {title:t("Options avancées", "Advanced options"),items:[
+            block(t("À utiliser si nécessaire", "Use when needed"),t("Le parcours normal reste : choisir un jeu, puis Lancer. Ces réglages servent à personnaliser une installation ou résoudre un problème.", "The normal flow remains: choose a game, then Launch. These settings customise an installation or help diagnose a problem.")),
+            row(t("Gérer les moteurs et émulateurs", "Manage engines and emulators"),"›",() => push("emulators"),{description:t("Installation, choix d’un programme externe et options propres au moteur.", "Installation, external executable selection and engine-specific options.")}),
+            row(t("BIOS et stockage avancé", "BIOS and advanced storage"),"›",() => push("storage")),
+            row(t("Matériel et mesures de fluidité", "Hardware and frame measurements"),"›",() => push("performance")),
+            row(t("Erreurs et état du logiciel", "Errors and application status"),"›",() => push("diagnostics")),
+            backRow()
+        ]}
+    }
+    function pageLibrary() {
+        const c = ov.config
+        const add = function(path) { if (!path) return; call("add_path",{path:path},function(ok) { if(ok) { libraryChanged(); reload(render); say(t("Dossier ajouté.", "Folder added.")) } }) }
+        const items = [
+            block(t("Tes jeux", "Your games"),t("Ajoute un fichier ou un dossier. Les jeux restent à leur emplacement ; le lanceur ne les déplace pas.", "Add a file or folder. Games stay where they are; the launcher does not move them.")),
+            row(t("Ajouter un jeu", "Add a game"),"＋",() => pickFile(t("Choisir un jeu", "Choose a game"),function(path) { if(path) { pendingGamePath=path; push("gameSystem",path) } })),
+            row(t("Ajouter un dossier de jeux", "Add a game folder"),"＋",() => pickFolder(t("Choisir un dossier de jeux", "Choose a game folder"),add)),
+            block(t("Dossiers suivis", "Watched folders"),c.rom_dirs.length ? "" : t("Aucun dossier ajouté pour le moment.", "No folders added yet."))
+        ]
+        for (const path of c.rom_dirs) items.push(row(code(path),confirmRemove===path ? t("Confirmer le retrait", "Confirm removal") : t("Retirer", "Remove"),function() {
+            if(confirmRemove!==path) { confirmRemove=path; return }
+            confirmRemove=null
+            call("remove_path",{path:path},function(ok) { if(ok) { libraryChanged(); reload(render) } })
+        },{description:t("Retire le dossier de la liste. Les fichiers de jeux sont conservés.", "Remove the folder from this list. Game files are kept."),danger:confirmRemove===path}))
+        items.push(block(t("Jeux ajoutés un par un", "Individually added games"),c.imported_games.length ? t(c.imported_games.length + " jeu(x) ajouté(s).",c.imported_games.length + " added game(s).") : t("Aucun pour le moment.", "None yet.")))
+        items.push(row(t("Gérer les chemins et les jeux ajoutés", "Manage paths and added games"),"›",() => push("storage")))
+        items.push(backRow())
+        return {title:t("Jeux et dossiers", "Games and folders"),items:items}
+    }
     function pageControls() {
         const device = Launcher.padName
             ? yes + " " + esc(Launcher.padName)
             : small(t("Aucune manette détectée — le clavier reste disponible.", "No controller detected — the keyboard remains available."));
         return {
-            title: t("Contrôles", "Controls"),
+            title: t("Manettes et touches", "Controllers and keys"),
             items: [
                 block(t("Périphérique actif", "Active device"), device),
                 row(t("Tester et visualiser les contrôles", "Test and visualise controls"), "›", function () {
@@ -177,7 +242,7 @@ Item {
                     "Déplacement : flèches ou croix directionnelle<br>Valider : Entrée ou A<br>Retour : Échap ou B<br>Réglages : Tab ou Start<br>Favori : F ou Y<br>Plein écran : F11",
                     "Move: arrow keys or D-pad<br>Confirm: Enter or A<br>Back: Escape or B<br>Settings: Tab or Start<br>Favourite: F or Y<br>Fullscreen: F11")),
                 block(t("Contrôles en jeu", "In-game controls"), t(
-                    "Les touches d'un jeu dépendent de la console et de l'émulateur sélectionné. Leur configuration se trouve dans la fiche de l'émulateur concerné.",
+                    "Moteur rétro : les manettes reconnues sont configurées automatiquement ; F1 ouvre les réglages en jeu. Pour GameCube avec Dolphin, utilise « Utiliser dans Dolphin » dans le testeur. Voir une réaction dans le testeur ne suffit pas à configurer tous les émulateurs.",
                     "Game controls depend on the console and selected emulator. Configure them from that emulator's page.")),
                 backRow()
             ]
@@ -526,9 +591,10 @@ Item {
 
     readonly property var pages: ({
         main: pageMain, general: pageGeneral, controls: pageControls, performance: pagePerformance,
+        image: pageImage, saves: pageSaves, help: pageHelp, advanced: pageAdvanced, storage: pageFolders,
         diagnostics: pageDiagnostics, systems: pageSystems, system: pageSystem,
         emulators: pageEmulators, emulator: pageEmulator,
-        customSystems: pageCustomSystems, folders: pageFolders, gameSystem: pageGameSystem, capture: pageCapture
+        customSystems: pageCustomSystems, folders: pageLibrary, gameSystem: pageGameSystem, capture: pageCapture
     })
 
     function prefs(update) {
@@ -696,7 +762,7 @@ Item {
                 width: header.width - x - closeButton.width - 14
                 height: header.height
                 Text { x: 0; y: 0; width: parent.width; height: 18; visible: root.crumbs !== ""; text: root.crumbs; textFormat: Text.StyledText; elide: Text.ElideLeft; color: root.text; opacity: 0.55; font.pixelSize: 12 }
-                Text { x: 0; y: 24; width: parent.width; text: root.busy ? "…" : root.pageTitle; textFormat: Text.StyledText; elide: Text.ElideRight; color: root.text; font.pixelSize: 21; font.weight: Font.DemiBold }
+                Text { x: 0; y: 24; width: parent.width; text: root.busy ? "…" : root.pageTitle; textFormat: Text.StyledText; elide: Text.ElideRight; color: root.text; font.pixelSize: 26; font.weight: Font.DemiBold }
             }
 
             Rectangle {
@@ -724,11 +790,38 @@ Item {
             }
         }
 
+
+        Rectangle {
+            x: 16; y: 92; width: 226
+            anchors.bottom: footer.top; anchors.bottomMargin: 8
+            radius: 12; color: "#e8edf5"
+            Column {
+                x: 8; y: 8; width: parent.width - 16; spacing: 4
+                Repeater {
+                    model: root.sections
+                    Rectangle {
+                        required property var modelData
+                        width: 210; height: 48; radius: 8
+                        color: root.activeSection() === modelData.id ? "#d1e0f7" : navMouse.containsMouse ? "#dde5f0" : "transparent"
+                        Text {
+                            anchors.fill: parent; anchors.margins: 12
+                            text: root.t(modelData.fr,modelData.en)
+                            color: "#17324d"; font.pixelSize: 14
+                            font.bold: root.activeSection() === modelData.id
+                            verticalAlignment: Text.AlignVCenter
+                            wrapMode: Text.WordWrap
+                        }
+                        MouseArea { id: navMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.switchSection(modelData.id) }
+                    }
+                }
+            }
+        }
+
         ListView {
             id: list
             anchors.top: header.bottom
             anchors.bottom: footer.top; anchors.bottomMargin: 8
-            x: 24; width: parent.width - 48
+            x: 266; width: parent.width - 290
             clip: true
             model: root.items.length
             boundsBehavior: Flickable.StopAtBounds
@@ -751,7 +844,7 @@ Item {
         Rectangle {
             id: footer
             anchors.bottom: parent.bottom; anchors.bottomMargin: 1
-            x: 1; width: parent.width - 2; height: 92
+            x: 1; width: parent.width - 2; height: root.toast !== "" ? 92 : 48
             color: root.panelColor; radius: 0
             Rectangle {
                 id: toastBox
