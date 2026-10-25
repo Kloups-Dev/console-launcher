@@ -21,6 +21,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
+pub mod journal;
+pub use journal::SessionRecord;
+
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
     #[error("cannot start {program}: {source}")]

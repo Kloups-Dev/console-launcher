@@ -45,6 +45,10 @@ impl Paths {
     pub fn captures_dir(&self) -> PathBuf {
         self.root.join("captures")
     }
+    /// Bounded local records describing completed and interrupted sessions.
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.root.join("sessions")
+    }
     /// Metadata resolved by serial/checksum. Kept separate from user settings
     /// so it can be refreshed or rebuilt without losing configuration.
     pub fn metadata_cache_file(&self) -> PathBuf {

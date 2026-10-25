@@ -261,7 +261,6 @@ Item {
                 const option = c.options.find(x => x.id === next);
                 say(c.info.name + " → " + (next && option ? option.name : "Auto"));
                 reload(render);
-                libraryChanged();
             });
         };
         const emulatorValue = esc(current ? current.name : c.emulator) + " " +
@@ -323,7 +322,6 @@ Item {
                     say(t(result.emulator + " " + result.version + " est installé et prêt.",
                           result.emulator + " " + result.version + " is installed and ready."));
                     reload(render);
-                    libraryChanged();
                 });
             }));
         }
@@ -338,7 +336,7 @@ Item {
         items.push(row(t("Choisir l'exécutable…", "Choose the executable…"), "📂", function () {
             pickFile(e.name, function (p) {
                 if (!p) return;
-                const done = function (ok) { if (ok) { say(t("Chemin enregistré.", "Path saved.")); reload(render); libraryChanged(); } };
+                const done = function (ok) { if (ok) { say(t("Chemin enregistré.", "Path saved.")); reload(render); } };
                 if (e.custom) {
                     const c = Object.assign({}, ov.config.custom_emulators[id], { path: p });
                     call("update_custom_emulator", { id: id, emulator: c }, done);
@@ -348,7 +346,7 @@ Item {
         if (e.configured_path && !e.custom)
             items.push(row(t("Revenir à la détection automatique", "Back to automatic detection"), "↺", function () {
                 call("set_emulator_path", { id: id, path: null }, function (ok) {
-                    if (ok) { say(t("Détection automatique.", "Automatic detection.")); reload(render); libraryChanged(); }
+                    if (ok) { say(t("Détection automatique.", "Automatic detection.")); reload(render); }
                 });
             }));
         if (e.found)
@@ -531,7 +529,6 @@ Item {
         call("update_preferences", update, function (ok) {
             if (!ok) return;
             reload(render);
-            if ("language" in update) libraryChanged();
         });
     }
 
