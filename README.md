@@ -258,3 +258,24 @@ These thresholds are conservative starting heuristics, not calibrated GPU or
 audio benchmarks. CPU and graphics limits remain separate: a single combined
 score cannot safely select every setting. Game compatibility defaults and
 manual settings remain authoritative. Physical audio latency is not measured.
+
+## Live diagnostics (Windows)
+
+The launcher owns a click-through, non-focusable overlay above a windowed or
+borderless emulator. It starts compact in the top-right corner; F8 (configurable)
+cycles compact, full diagnostics and hidden. Ctrl+Alt+F8 is the fallback. It does
+not inject into an emulator and cannot guarantee display over exclusive fullscreen.
+PresentMon supplies presentation events for the launched PID; the launcher computes
+bounded rolling statistics and a 2-second frame-time chart. Presented FPS are not
+native/emulated FPS or proof of correct emulation speed. No keyboard input is logged.
+Windows provides CPU/RAM and, where available, GPU engine/dedicated memory counters.
+The optional installed NVIDIA NVML driver provides whole-card temperatures, clocks,
+power and VRAM. Cards are named and the source/scope is shown; missing readings stay
+unavailable rather than zero. No sensor driver or third-party overlay is installed.
+Audio glitches, physical input-to-display latency, CPU temperature and internal
+emulation speed are not measured. Present-to-display delay is not input latency.
+The full view includes the chosen profile, requested settings, protected manual
+settings and session notes. These are configuration context, not readback of every
+runtime override. Windows permission failures and unsupported sensors remain visible.
+Collection ends with the session and no telemetry is uploaded. Linux overlay is
+currently unavailable rather than advertising a shortcut without a working display.

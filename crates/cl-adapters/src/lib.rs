@@ -73,6 +73,8 @@ pub struct LaunchContext<'a> {
 /// The command to run and what was done to prepare it.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LaunchPlan {
+    /// Local diagnostics handed to the launcher's overlay, never to the emulator.
+    pub diagnostics: serde_json::Value,
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,

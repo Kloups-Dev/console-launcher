@@ -459,18 +459,24 @@ struct LiveSession {
 }
 
 impl LiveSession {
-    fn publish_at(path: PathBuf, pid: u32, program: &Path) -> std::io::Result<Self> {
+    fn publish_at(
+        path: PathBuf,
+        pid: u32,
+        program: &Path,
+        context: &serde_json::Value,
+    ) -> std::io::Result<Self> {
         let bytes = serde_json::to_vec(&serde_json::json!({
             "pid": pid,
             "program": program,
+            "context": context,
         }))?;
         std::fs::write(&path, bytes)?;
         Ok(Self { path })
     }
 
-    fn publish(pid: u32, program: &Path) -> Option<Self> {
+    fn publish(pid: u32, plan: &LaunchPlan) -> Option<Self> {
         let path = std::env::var_os("CONSOLE_LAUNCHER_LIVE_SESSION")?;
-        match Self::publish_at(path.into(), pid, program) {
+        match Self::publish_at(path.into(), pid, &plan.program, &plan.diagnostics) {
             Ok(session) => Some(session),
             Err(error) => {
                 log::warn!("live performance panel unavailable: {error}");
@@ -523,7 +529,7 @@ pub fn run(
         source,
     })?;
 
-    let _live_session = LiveSession::publish(child.id(), &plan.program);
+    let _live_session = LiveSession::publish(child.id(), plan);
 
     let mut presentmon = None;
     let pm_file = capture.map(|c| {
@@ -662,13 +668,19 @@ mod tests {
     fn live_handoff_contains_only_the_launched_process_and_is_removed() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.json");
-        let session =
-            LiveSession::publish_at(path.clone(), 4242, Path::new("emulator.exe")).unwrap();
+        let session = LiveSession::publish_at(
+            path.clone(),
+            4242,
+            Path::new("emulator.exe"),
+            &serde_json::json!({"game":"test"}),
+        )
+        .unwrap();
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(value["pid"], 4242);
         assert_eq!(value["program"], "emulator.exe");
-        assert_eq!(value.as_object().unwrap().len(), 2);
+        assert_eq!(value["context"]["game"], "test");
+        assert_eq!(value.as_object().unwrap().len(), 3);
         drop(session);
         assert!(!path.exists());
     }

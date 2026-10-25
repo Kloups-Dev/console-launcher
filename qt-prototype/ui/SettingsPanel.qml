@@ -281,8 +281,9 @@ Item {
                     right: function () { Launcher.performance.functionKey = Launcher.performance.functionKey % 11 + 1; render(); }
                 }),
                 block(t("Diagnostic en jeu", "In-game diagnostics"), t(
-                    "Windows : la touche choisie affiche ou masque les mesures au-dessus du jeu en mode fenêtré/sans bordure. Les FPS présentés ne sont pas une mesure de vitesse d'émulation. Le son n'est pas encore mesuré.",
-                    "Windows: the selected key toggles measurements over windowed/borderless games. Presented FPS do not measure emulation speed. Audio is not measured yet.")),                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
+                    "Windows : vue compacte en haut à droite au lancement. La touche choisie alterne compact, diagnostic complet et masqué. Ctrl+Alt+F8 sert de secours. Mode fenêtré/sans bordure requis. Les capteurs indisponibles sont signalés.",
+                    "Windows: compact view at the top right when playing. The selected key cycles compact, full diagnostics and hidden. Ctrl+Alt+F8 is the fallback. Requires windowed/borderless mode. Missing sensors are reported.")),
+                row(t("Optimisation automatique", "Automatic optimisation"), onOff(c.perf.auto_tune), () => prefs({ autoTune: !c.perf.auto_tune })),
                 row(t("Optimisations système (priorité, GPU)", "System optimisations (priority, GPU)"), onOff(c.perf.system_tweaks), () => prefs({ systemTweaks: !c.perf.system_tweaks })),
                 row(t("Mesure de fluidité", "Smoothness check"), ov.capture.available ? yes : no, () => push("capture")),
                 block(t("Machine détectée", "Detected hardware"), hw ? esc(hw.cpu.brand + " · " + hw.ram_mb + " MB · " + gpu + " · score " + (hw.bench ? hw.bench.score : "?")) : "—"),

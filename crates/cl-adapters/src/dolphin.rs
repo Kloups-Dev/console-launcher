@@ -126,10 +126,10 @@ impl EmulatorAdapter for Dolphin {
     }
 
     fn tuning_revision(&self) -> u32 {
-        // Revision 3 adapts shader and audio budgets to the detected hardware.
+        // Revision 4 uses borderless fullscreen for the native live overlay.
         // The policy removes Skip Drawing and forced Dual Core, and chooses
         // the initial graphics API with Dolphin's vendor guidance.
-        3
+        4
     }
     fn exe_names(&self) -> Vec<String> {
         let names: &[&str] = if cfg!(windows) {

@@ -50,12 +50,22 @@ public:
         }
         if (!m_streams.contains(key) && m_streams.size() >= 8) return;
         auto &frames = m_streams[key];
-        frames.push_back({nowMs, ms});
+        const auto optional = [&](const char *name) {
+            const int at = m_columns.indexOf(QString::fromLatin1(name));
+            if (at < 0) return -1.0;
+            bool valid = false;
+            const double v = fields[at].toDouble(&valid);
+            return valid && std::isfinite(v) && v > 0 ? v : -1.0;
+        };
+        const int dropped = m_columns.indexOf("Dropped");
+        frames.push_back({nowMs, ms, optional("MsGPUActive"), optional("MsUntilRenderComplete"),
+                          optional("MsUntilDisplayed"), dropped < 0 ? -1 : (fields[dropped] == "1" ? 1 : 0)});
         while (frames.size() > 1024 || (!frames.empty() && nowMs - frames.front().arrival > 2000))
             frames.pop_front();
     }
     QVariantMap snapshot(qint64 nowMs) const {
         QVector<double> values;
+        std::deque<Frame> selected;
         qint64 newest = -1;
         for (auto it = m_streams.cbegin(); it != m_streams.cend(); ++it) {
             QVector<double> candidate;
@@ -64,23 +74,42 @@ public:
                 if (nowMs - frame.arrival <= 2000) candidate << frame.ms;
             if (candidate.size() > values.size()) {
                 values = candidate; newest = it.value().back().arrival;
+                selected = it.value();
             }
         }
         if (values.size() < 20) return {{"measured", false}, {"frames", values.size()}};
         double sum = 0;
         for (double v : values) sum += v;
+        QVariantList timeline;
+        double gpu = 0, render = 0, display = 0;
+        int gpuN = 0, renderN = 0, displayN = 0, droppedN = 0, dropped = 0;
+        for (const auto &f : selected) {
+            if (nowMs - f.arrival > 2000) continue;
+            timeline << f.ms;
+            if (f.gpu > 0) { gpu += f.gpu; ++gpuN; }
+            if (f.render > 0) { render += f.render; ++renderN; }
+            if (f.display > 0) { display += f.display; ++displayN; }
+            if (f.dropped >= 0) { ++droppedN; dropped += f.dropped; }
+        }
         std::sort(values.begin(), values.end());
         const double median = values[values.size() / 2];
         const double p99 = values[qRound((values.size() - 1) * 0.99)];
         int spikes = 0;
         for (double v : values) if (v > median * 1.5) ++spikes;
-        return {{"measured", true}, {"frames", values.size()},
+        QVariantMap result{{"measured", true}, {"frames", values.size()},
                 {"fps", values.size() * 1000.0 / sum}, {"frameMs", sum / values.size()},
                 {"p99Ms", p99}, {"low1", 1000.0 / p99},
+                {"p95Ms", values[qRound((values.size()-1)*0.95)]}, {"medianMs", median},
+                {"minMs", values.front()}, {"maxMs", values.back()}, {"timeline", timeline},
                 {"spikes", spikes}, {"ageMs", nowMs - newest}};
+        if (gpuN) result["gpuActiveMs"] = gpu/gpuN;
+        if (renderN) result["renderDelayMs"] = render/renderN;
+        if (displayN) result["displayDelayMs"] = display/displayN;
+        if (droppedN) result["droppedPercent"] = 100.0*dropped/droppedN;
+        return result;
     }
 private:
-    struct Frame { qint64 arrival; double ms; };
+    struct Frame { qint64 arrival; double ms, gpu, render, display; int dropped; };
     QStringList m_columns;
     QHash<QString, std::deque<Frame>> m_streams;
 };

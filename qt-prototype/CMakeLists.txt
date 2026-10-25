@@ -72,6 +72,8 @@ qt_add_executable(console-launcher-qt
     src/perfmonitor.cpp
     src/perfmonitor.h
     src/framestream.h
+    src/systemtelemetry.cpp
+    src/systemtelemetry.h
 )
 if(NOT CL_ENGINE_PREBUILT_DIR)
     add_dependencies(console-launcher-qt cl_engine_build)
@@ -97,7 +99,7 @@ qt_add_qml_module(console-launcher-qt
 if(WIN32)
     set_target_properties(console-launcher-qt PROPERTIES WIN32_EXECUTABLE ON)
     target_sources(console-launcher-qt PRIVATE src/app.rc)
-    target_link_libraries(console-launcher-qt PRIVATE user32 psapi)
+    target_link_libraries(console-launcher-qt PRIVATE user32 psapi pdh)
 else()
     # The engine library sits next to the executable.
     set_target_properties(console-launcher-qt PROPERTIES
@@ -127,9 +129,9 @@ if(CL_PERFORMANCE_TESTS)
     target_link_libraries(performance-stream-tests PRIVATE Qt6::Core)
     add_test(NAME performance-stream COMMAND performance-stream-tests)
     if(WIN32)
-        add_executable(performance-monitor-tests tests/perfmonitor_test.cpp src/perfmonitor.cpp src/perfmonitor.h src/framestream.h)
+        add_executable(performance-monitor-tests tests/perfmonitor_test.cpp src/perfmonitor.cpp src/perfmonitor.h src/framestream.h src/systemtelemetry.cpp src/systemtelemetry.h)
         target_include_directories(performance-monitor-tests PRIVATE src)
-        target_link_libraries(performance-monitor-tests PRIVATE Qt6::Gui user32 psapi)
+        target_link_libraries(performance-monitor-tests PRIVATE Qt6::Gui user32 psapi pdh)
         add_test(NAME performance-monitor COMMAND performance-monitor-tests)
     endif()
 endif()

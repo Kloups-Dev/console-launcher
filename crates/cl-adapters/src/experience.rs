@@ -6,6 +6,7 @@ pub fn settings(adapter: &str, mode: ExperienceMode) -> BTreeMap<String, String>
     let responsive = mode == ExperienceMode::Responsive;
     let entries: Vec<(&str, String)> = match adapter {
         "dolphin" => vec![
+            ("GFX.Settings.BorderlessFullscreen", "True".into()),
             ("GFX.Hardware.VSync", (!responsive).to_string()),
             ("GFX.Settings.ShaderCache", "True".into()),
             ("GFX.Settings.WaitForShadersBeforeStarting", "True".into()),

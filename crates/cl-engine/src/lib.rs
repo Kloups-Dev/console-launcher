@@ -1384,6 +1384,12 @@ impl Engine {
             }
         }
         notes.extend(plan.notes.iter().cloned());
+        plan.diagnostics = serde_json::json!({
+            "game": game.title, "gameId": game.id, "system": game.system,
+            "profile": step.label, "api": tuning.api, "priority": self.config.perf.experience.key(),
+            "hardware": self.hardware(false), "settings": step.settings,
+            "kept": plan.settings_report.kept_user_value, "notes": notes,
+        });
         Ok((
             PreparedLaunch {
                 game: game.clone(),
@@ -1654,7 +1660,7 @@ mod tests {
         assert_eq!(p.step_label, "1440p");
         assert!(!p.measure);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-3"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-4"));
         assert!(p
             .plan
             .args
@@ -1698,7 +1704,7 @@ mod tests {
         let tuning = engine.tuning(&game, &cl_adapters::Dolphin);
         assert_eq!(tuning.state.current, 3);
         assert_eq!(tuning.api, cl_core::GraphicsApi::Vulkan);
-        assert!(tuning.hardware.ends_with("|dolphin-policy-3"));
+        assert!(tuning.hardware.ends_with("|dolphin-policy-4"));
     }
 
     #[test]

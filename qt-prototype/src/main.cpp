@@ -12,6 +12,8 @@
 #include <QQmlError>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QQuickWindow>
+#include <QImage>
 #include <QtQml/qqml.h>
 
 #include "backend.h"
@@ -86,6 +88,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     app.setOrganizationName("ConsoleLauncher");
     app.setApplicationName("console-launcher-qt");
+    app.setApplicationVersion(QStringLiteral(CL_VERSION));
     const bool smokeTest = app.arguments().contains("--smoke-test");
 
     const QString logPath = openLog();
@@ -122,7 +125,8 @@ int main(int argc, char *argv[]) {
     backend.setQmlEngine(&engine);
     qInfo("loading built-in interface");
     backend.loadInterface();
-    const bool loaded = !engine.rootObjects().isEmpty();
+    const bool loaded = !engine.rootObjects().isEmpty() &&
+        (!backend.performance()->supported() || engine.rootObjects().size() >= 2);
     if (loaded) {
         qInfo("interface loaded");
     } else {
@@ -132,6 +136,25 @@ int main(int argc, char *argv[]) {
         if (!smokeTest)
             showLoadError(engine, qmlErrors.isEmpty() ? QStringList{backend.lastError()} : qmlErrors,
                           logPath);
+    }
+
+    if (app.arguments().contains("--overlay-preview")) {
+        if (!loaded) return 1;
+        const int outputAt = app.arguments().indexOf("--preview-output");
+        if (outputAt < 0 || outputAt + 1 >= app.arguments().size()) return 2;
+        const QString output = app.arguments().at(outputAt + 1);
+        const bool compact = app.arguments().contains("--compact-preview");
+        QTimer::singleShot(250, &backend, [&backend, compact] { backend.performance()->showPreview(compact); });
+        QTimer::singleShot(1500, &app, [&] {
+            bool saved = false;
+            for (auto *root : engine.rootObjects()) {
+                auto *window = qobject_cast<QQuickWindow *>(root);
+                if (window && window->title().contains("Statistiques en direct"))
+                    saved = window->grabWindow().save(output);
+            }
+            app.exit(saved ? 0 : 3);
+        });
+        return app.exec();
     }
 
     // Controllers start after the window, on their own thread: a slow or
